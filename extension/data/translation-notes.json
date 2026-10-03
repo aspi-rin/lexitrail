@@ -1,0 +1,206 @@
+{
+  "a": {
+    "translation": "一；一个",
+    "note": "人工校正冠词的常用义。"
+  },
+  "i": {
+    "translation": "我",
+    "note": "人工校正第一人称代词的常用义。"
+  },
+  "may": {
+    "translation": "可能；可以；五月",
+    "note": "人工调整常用义顺序。"
+  },
+  "resilient": {
+    "translation": "有韧性的；能迅速恢复的；有弹性的",
+    "note": "补充常用引申义。"
+  },
+  "angsty": {
+    "translation": "焦虑的；烦躁不安的",
+    "note": "根据 ECDICT angst 的中文义补充派生词。"
+  },
+  "arcanely": {
+    "translation": "神秘地；晦涩难懂地",
+    "note": "根据 ECDICT arcane 补充副词。"
+  },
+  "bereftly": {
+    "translation": "失落地；丧失亲人地",
+    "note": "根据 ECDICT bereft 补充副词。"
+  },
+  "caffeinate": {
+    "translation": "添加咖啡因；摄入咖啡因",
+    "note": "根据 ECDICT caffeine 补充动词。"
+  },
+  "choreographical": {
+    "translation": "舞蹈编排的；舞蹈艺术的",
+    "note": "采用 ECDICT choreographic 的拼写变体义。"
+  },
+  "confrontationally": {
+    "translation": "对抗地；挑衅地",
+    "note": "根据 ECDICT confrontational 补充副词。"
+  },
+  "counterproductively": {
+    "translation": "适得其反地；产生反效果地",
+    "note": "根据 ECDICT counterproductive 补充副词。"
+  },
+  "cyberaddict": {
+    "translation": "网络成瘾者",
+    "note": "人工补充 cyber + addict 合成词。"
+  },
+  "cyberpet": {
+    "translation": "虚拟宠物；电子宠物",
+    "note": "人工补充 cyber + pet 合成词。"
+  },
+  "cyberschool": {
+    "translation": "网络学校；在线学校",
+    "note": "人工补充 cyber + school 合成词。"
+  },
+  "deviantly": {
+    "translation": "反常地；偏离常规地",
+    "note": "根据 ECDICT deviant 补充副词。"
+  },
+  "evokingly": {
+    "translation": "唤起感受地；引发联想地",
+    "note": "根据 ECDICT evoke 补充副词。"
+  },
+  "fabulate": {
+    "translation": "编造故事；虚构",
+    "note": "人工补充，与 ECDICT fabulation 对照。"
+  },
+  "flatout": {
+    "translation": "全力以赴地；直截了当地",
+    "note": "采用 flat out 的连写形式，补充常用义。"
+  },
+  "genomically": {
+    "translation": "在基因组层面；从基因组角度",
+    "note": "根据 ECDICT genomic 补充副词。"
+  },
+  "glocal": {
+    "translation": "全球与本地结合的",
+    "note": "人工补充 global + local 合成词。"
+  },
+  "misdemanour": {
+    "translation": "轻罪（词表拼写有误：misdemeanour）",
+    "note": "原词表保留，释义参考 ECDICT 的正确拼写。"
+  },
+  "netsurfer": {
+    "translation": "网上冲浪者；网民",
+    "note": "人工补充 net surfer 连写形式。"
+  },
+  "paralysingly": {
+    "translation": "令人瘫痪地；使人无法行动地",
+    "note": "根据 ECDICT paralysing 补充副词。"
+  },
+  "personalisation": {
+    "translation": "个性化；个人化",
+    "note": "人工补充英式拼写，与 personalization 对照。"
+  },
+  "porten": {
+    "translation": "词表拼写待核对",
+    "note": "原词表异常项；未确认英语词义，明确标记待核对。"
+  },
+  "recognisably": {
+    "translation": "可辨认地；明显地",
+    "note": "根据 ECDICT recognizable 补充英式副词。"
+  },
+  "stressfully": {
+    "translation": "令人紧张地；充满压力地",
+    "note": "人工补充 stressful 的常用副词义。"
+  },
+  "tee-shirt": {
+    "translation": "T恤衫",
+    "note": "人工补充 T-shirt 的拼写变体。"
+  },
+  "tranquilise": {
+    "translation": "使安静；使镇定",
+    "note": "采用 ECDICT tranquilize 的英式拼写义。"
+  },
+  "undiminishing": {
+    "translation": "持续不减的",
+    "note": "根据 diminish 和 ECDICT undiminished 补充派生词。"
+  },
+  "unenviably": {
+    "translation": "令人难以羡慕地；处境尴尬地",
+    "note": "根据 ECDICT unenviable 补充副词。"
+  },
+  "unfeasibly": {
+    "translation": "难以实施地；不切实际地",
+    "note": "根据 ECDICT unfeasible 补充副词。"
+  },
+  "unharried": {
+    "translation": "从容的；未受困扰的",
+    "note": "根据 ECDICT harried 补充否定派生词。"
+  },
+  "unscathing": {
+    "translation": "不伤害的；不严厉批评的",
+    "note": "根据 ECDICT scathing 补充否定派生词。"
+  },
+  "unsustainably": {
+    "translation": "不可持续地；难以维持地",
+    "note": "人工補充 unsustainable 的常用副词义。"
+  },
+  "well-organised": {
+    "translation": "有条理的；组织有序的",
+    "note": "采用 ECDICT well-organized 的英式拼写义。"
+  },
+  "affordable": {
+    "translation": "价格实惠的；负担得起的",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "download": {
+    "translation": "下载",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "upload": {
+    "translation": "上传",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "firewall": {
+    "translation": "防火墙",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "laptop": {
+    "translation": "笔记本电脑",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "online": {
+    "translation": "在线的；联网的",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "internet": {
+    "translation": "互联网；因特网",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "e-mail": {
+    "translation": "电子邮件",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "counselling": {
+    "translation": "咨询；心理辅导",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "personalization": {
+    "translation": "个性化；个人化",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "digitalisation": {
+    "translation": "数字化",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "digitalization": {
+    "translation": "数字化",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "digitalise": {
+    "translation": "使数字化",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "digitalize": {
+    "translation": "使数字化",
+    "note": "人工校正常用义及技术词翻译。"
+  },
+  "overemphasise": {
+    "translation": "过分强调",
+    "note": "人工补充 overemphasize 的英式拼写义。"
+  }
+}

@@ -1,0 +1,24 @@
+::highlight(lexitrail-new) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-color: #3979dc;
+  text-decoration-thickness: 1.5px;
+}
+::highlight(lexitrail-learning) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-color: #e28a31;
+  text-decoration-thickness: 1.5px;
+}
+span[data-lexitrail-translation] {
+  display: inline !important;
+}
+span[data-lexitrail-translation]::after {
+  content: ' (' attr(data-lexitrail-translation) ')';
+  color: #71849e;
+  font-size: .8em;
+  font-weight: normal;
+  font-style: normal;
+  letter-spacing: normal;
+  text-decoration: none;
+}

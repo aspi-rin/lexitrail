@@ -1,0 +1,18 @@
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+const root = path.join(__dirname, '..');
+const version = require('../extension/manifest.json').version;
+const output = path.join(root, 'dist', `lexitrail-${version}`);
+fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
+fs.rmSync(output, { recursive: true, force: true });
+fs.cpSync(path.join(root, 'extension'), output, { recursive: true });
+for (const name of ['cefrj.csv', 'octanove.csv']) fs.rmSync(path.join(output, 'data', name));
+fs.copyFileSync(path.join(root, 'README.md'), path.join(output, 'README.md'));
+fs.copyFileSync(path.join(root, 'THIRD_PARTY_NOTICES.md'), path.join(output, 'THIRD_PARTY_NOTICES.md'));
+fs.cpSync(path.join(root, 'docs'), path.join(output, 'docs'), { recursive: true });
+const archive = path.join(root, 'dist', `lexitrail-${version}.zip`);
+fs.rmSync(archive, { force: true });
+execFileSync('/usr/bin/zip', ['-qr', archive, path.basename(output)], { cwd: path.dirname(output) });
+console.log(`Unpacked: ${output}\nZIP: ${archive}`);

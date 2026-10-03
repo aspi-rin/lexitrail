@@ -1,0 +1,146 @@
+(async function () {
+  'use strict';
+  const C = LexiTrail;
+  let state = C.emptyState(), tab = 'new', page = 0, hasKey = false, keyDirty = false, syncState = {}, syncBusy = false, clientDirty = false;
+  const PAGE_SIZE = 40, $ = selector => document.querySelector(selector);
+  function el(tag, text, className) { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; }
+  async function send(message) {
+    const response = await chrome.runtime.sendMessage(message);
+    if (!response?.ok) throw new Error(response?.error ?? '操作失败。');
+    return response.data;
+  }
+  function message(text, error = false) { $('#message').textContent = text; $('#message').classList.toggle('error', error); }
+  function render() {
+    document.querySelectorAll('.nav').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    $('#page-title').textContent = C.STATUSES[tab] ?? '设置';
+    $('#page-description').textContent = tab === 'settings' ? '为您的阅读习惯留一点空间。' : '在阅读中遇见，让词汇留下来。';
+    $('#settings').hidden = tab !== 'settings'; $('#vocabulary').hidden = tab === 'settings';
+    $('#onboarding').hidden = state.initialized || tab === 'settings';
+    const counts = C.counts(state);
+    for (const status of Object.keys(C.STATUSES)) $(`#count-${status}`).textContent = counts[status].toLocaleString();
+    const query = $('#search').value.trim().toLowerCase();
+    const records = Object.values(state.words).filter(r => r.status === tab && r.word.includes(query)).sort((a, b) => a.word.localeCompare(b.word));
+    const pages = Math.max(1, Math.ceil(records.length / PAGE_SIZE)); page = Math.min(page, pages - 1);
+    $('#word-list').replaceChildren();
+    for (const record of records.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE)) {
+      const row = el('tr'); row.append(el('td', record.word));
+      const level = el('td'), badge = el('span', record.level || '—'); badge.className = 'level-tag'; level.append(badge); row.append(level);
+      const translation = el('td', record.translation || record.lookup?.meaning || '添加 Key 后查词可补充释义');
+      translation.className = 'word-translation'; row.append(translation);
+      const context = el('td'); context.className = 'context';
+      if (record.lookup) {
+        const saved = record.lookup, details = el('details'); details.className = 'saved-lookup';
+        details.append(el('summary', '已保存的释义与例句'));
+        if (saved.partOfSpeech) details.append(el('p', saved.partOfSpeech));
+        details.append(el('p', saved.meaning));
+        if (saved.definition) details.append(el('p', saved.definition));
+        details.append(el('p', saved.example));
+        if (saved.exampleTranslation) details.append(el('p', saved.exampleTranslation));
+        if (saved.context) details.append(el('p', `首次查询语境：${saved.context}`, 'muted'));
+        details.append(el('p', `${saved.model} · ${new Date(saved.queriedAt).toLocaleDateString()}`, 'muted'));
+        context.append(details);
+      }
+      if (record.examples?.length) {
+        const details = el('details'); details.append(el('summary', `${record.examples.length} 条收藏语境`));
+        for (const example of record.examples) {
+          details.append(el('p', example.text));
+          if (example.url) { const link = el('a', example.title || '来源页面 ↗'); link.href = example.url; link.target = '_blank'; link.rel = 'noreferrer'; link.className = 'source-link'; details.append(link); }
+        }
+        context.append(details);
+      } else if (!record.lookup) context.textContent = '等您在阅读中遇见';
+      row.append(context);
+      const status = el('td'), select = el('select'); select.setAttribute('aria-label', `${record.word} 的状态`);
+      for (const [value, label] of Object.entries(C.STATUSES)) { const option = el('option', label); option.value = value; option.selected = value === record.status; select.append(option); }
+      select.addEventListener('change', async () => {
+        select.disabled = true;
+        try { await send({ type: 'MARK_WORD', word: record.word, status: select.value }); await refresh(); message(`${record.word} 已移至${C.STATUSES[select.value]}`); }
+        catch (e) { message(e.message, true); select.value = record.status; select.disabled = false; }
+      });
+      status.append(select); row.append(status); $('#word-list').append(row);
+    }
+    $('#list-count').textContent = `${records.length.toLocaleString()} 个词`;
+    $('#empty').hidden = records.length > 0;
+    $('#page-number').textContent = `${page + 1} / ${pages}`; $('#previous').disabled = page === 0; $('#next').disabled = page >= pages - 1;
+    $('#seed-description').textContent = state.initialized ? `初始等级：${state.levels.join('、')}。现在由三个个人词本维护每个词的状态。` : '首次使用时，您可以选择多个 CEFR 等级。';
+  }
+  async function refresh() {
+    const data = await send({ type: 'GET_STATE' }); state = data.state;
+    hasKey = data.hasKey;
+    const settings = await send({ type: 'GET_SETTINGS' });
+    if (!keyDirty) $('#api-key').value = settings.key || '';
+    syncState = settings.sync || {}; renderKey(); renderSync();
+    $('#enabled').checked = state.enabled;
+    render();
+  }
+  try {
+    const levels = await send({ type: 'GET_LEVELS' });
+    for (const { level, count } of levels) {
+      const label = el('label'); label.className = 'level-card'; const checkbox = el('input'); checkbox.type = 'checkbox'; checkbox.value = level;
+      label.append(checkbox, el('strong', level), el('span', `${count.toLocaleString()} 个词`)); $('#levels').append(label);
+    }
+    await refresh(); $('#enabled').checked = state.enabled;
+  } catch (e) { message(e.message, true); }
+  document.querySelectorAll('.nav').forEach(button => button.addEventListener('click', () => { tab = button.dataset.tab; page = 0; render(); message(''); }));
+  $('#search').addEventListener('input', () => { page = 0; render(); });
+  $('#previous').addEventListener('click', () => { page--; render(); }); $('#next').addEventListener('click', () => { page++; render(); });
+  $('#initialize').addEventListener('click', async () => {
+    const button = $('#initialize'); button.disabled = true;
+    try {
+      const levels = [...document.querySelectorAll('#levels input:checked')].map(i => i.value);
+      const result = await send({ type: 'INITIALIZE', levels }); await refresh(); message(`已建立初始词本，共 ${result.count.toLocaleString()} 个词。`);
+    } catch (e) { message(e.message, true); } finally { button.disabled = false; }
+  });
+  function renderKey() {
+    const configured = hasKey && !keyDirty, button = $('#save-key');
+    button.classList.toggle('key-configured', configured);
+    $('#key-action-label').textContent = configured ? '已配置' : '保存';
+    button.title = configured ? '删除 Key' : '保存 Key';
+    button.setAttribute('aria-label', configured ? '已配置，点击删除 Key' : '保存 Key');
+  }
+  $('#api-key').addEventListener('input', () => { keyDirty = true; renderKey(); });
+  $('#api-key').addEventListener('keydown', e => { if (e.key === 'Enter' && (keyDirty || !hasKey)) $('#save-key').click(); });
+  $('#key-visibility').addEventListener('click', () => {
+    const input = $('#api-key'), visible = input.type === 'password'; input.type = visible ? 'text' : 'password';
+    $('#key-visibility').setAttribute('aria-label', visible ? '隐藏 Key' : '显示 Key');
+    $('#key-visibility').title = visible ? '隐藏 Key' : '显示 Key';
+  });
+  $('#save-key').addEventListener('click', async () => {
+    const button = $('#save-key'), clearKey = hasKey && !keyDirty;
+    if (!clearKey && !$('#api-key').value.trim()) { message('请填写 DeepSeek Key。', true); return; }
+    button.disabled = true;
+    try {
+      await send({ type: 'SAVE_SETTINGS', enabled: state.enabled, key: clearKey ? '' : $('#api-key').value, clearKey });
+      keyDirty = false; $('#api-key').type = 'password'; $('#key-visibility').setAttribute('aria-label', '显示 Key');
+      await refresh(); message(clearKey ? 'Key 已删除。' : 'Key 已配置。');
+    } catch (e) { message(e.message, true); } finally { button.disabled = false; }
+  });
+  $('#enabled').addEventListener('change', async () => {
+    try { await send({ type: 'SAVE_SETTINGS', enabled: $('#enabled').checked }); await refresh(); message('阅读标注设置已保存。'); }
+    catch (e) { message(e.message, true); $('#enabled').checked = state.enabled; }
+  });
+  function renderSync() {
+    const parts = [syncState.connected ? 'Google Drive 已连接' : '连接后可同步词本'];
+    if (syncState.lastSync) parts.push(`上次同步：${new Date(syncState.lastSync).toLocaleString()}`);
+    if (syncState.dirty) parts.push('有本地变更待同步');
+    $('#sync-status').textContent = syncBusy ? '正在读取、合并并保存词本…' : parts.join(' · ');
+    if (!clientDirty && document.activeElement !== $('#drive-client')) $('#drive-client').value = syncState.clientId || '';
+    $('#drive-redirect').value = syncState.redirect || '';
+    $('#drive-sync').disabled = syncBusy || !syncState.connected;
+    $('#drive-connect').disabled = syncBusy; $('#drive-connect').textContent = syncState.connected ? '切换 / 重新连接' : '连接 Google Drive';
+    $('#drive-disconnect').hidden = !syncState.connected; $('#drive-disconnect').disabled = syncBusy;
+  }
+  async function syncAction(type) {
+    const clientId = $('#drive-client').value.trim();
+    syncBusy = true; renderSync();
+    try {
+      const result = await send({ type, clientId }); syncState = result; if (type === 'DRIVE_CONNECT') clientDirty = false;
+      await refresh(); message(type === 'DRIVE_SYNC' ? `词本已同步，共 ${result.words.toLocaleString()} 个词。` : type === 'DRIVE_CONNECT' ? 'Google Drive 已连接，可点击立即同步。' : '本机已断开 Google Drive 连接。');
+    } catch (e) { message(e.message, true); }
+    finally { syncBusy = false; renderSync(); }
+  }
+  $('#drive-client').addEventListener('input', () => { clientDirty = true; });
+  $('#drive-connect').addEventListener('click', () => syncAction('DRIVE_CONNECT'));
+  $('#drive-sync').addEventListener('click', () => syncAction('DRIVE_SYNC'));
+  $('#drive-disconnect').addEventListener('click', () => syncAction('DRIVE_DISCONNECT'));
+  chrome.storage.onChanged.addListener(changes => { if (changes.state) refresh().catch(e => message(e.message, true)); });
+})();
