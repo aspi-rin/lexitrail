@@ -8,6 +8,8 @@ for (const entry of fs.readdirSync(folder)) {
 }
 const manifest = require('../extension/manifest.json');
 if (manifest.version !== require('../package.json').version) throw Error('Version mismatch');
+require('node:crypto').createPublicKey({ key: Buffer.from(manifest.key, 'base64'), format: 'der', type: 'spki' });
+if (manifest.oauth2 && (!/^[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(manifest.oauth2.client_id) || manifest.oauth2.scopes?.join() !== 'https://www.googleapis.com/auth/drive.appdata')) throw Error('Invalid Google configuration');
 const files = [manifest.background.service_worker, manifest.action.default_popup, manifest.options_page, ...manifest.content_scripts.flatMap(s => [...s.js, ...s.css]), 'data/cefr.json', 'data/translations.json', 'data/ECDICT-LICENSE.txt'];
 for (const name of files) if (!fs.existsSync(path.join(folder, name))) throw Error(`Missing ${name}`);
 function scan(dir) {
@@ -18,4 +20,5 @@ function scan(dir) {
   }
 }
 scan(folder);
+console.log(`Google app registration: ${manifest.oauth2 ? 'configured' : 'pending'}; public extension identity valid.`);
 console.log('Syntax, manifest paths, versions and extension credential scan passed.');

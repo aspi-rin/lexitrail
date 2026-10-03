@@ -47,3 +47,12 @@ test('malformed snapshots, bad timestamps and excessive output fail before local
   }
   assert.throws(() => S.snapshot(large, device), /8 MB/);
 });
+test('local backup format rejects wrong app, invalid records and oversized payloads', () => {
+  const C = global.LexiTrail;
+  const state = C.emptyState(); C.mark(state, 'forest', 'learning', {}, { text: 'Context.' }, 100);
+  const backup = S.backup(state);
+  assert.equal(S.readBackup(JSON.stringify(backup)).words.forest.status, 'learning');
+  assert.throws(() => S.readBackup(JSON.stringify({ ...backup, app: 'Other' })), /LexiTrail/);
+  assert.throws(() => S.readBackup(' '.repeat(S.LIMIT + 1)), /8 MB/);
+  backup.state.words.forest.status = 'invalid'; assert.throws(() => S.readBackup(JSON.stringify(backup)), /词条/);
+});

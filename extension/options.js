@@ -1,7 +1,7 @@
 (async function () {
   'use strict';
   const C = LexiTrail;
-  let state = C.emptyState(), tab = 'new', page = 0, hasKey = false, keyDirty = false, syncState = {}, syncBusy = false, clientDirty = false;
+  let state = C.emptyState(), tab = 'new', page = 0, hasKey = false, keyDirty = false, syncState = {}, syncBusy = false;
   const PAGE_SIZE = 40, $ = selector => document.querySelector(selector);
   function el(tag, text, className) { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; }
   async function send(message) {
@@ -119,28 +119,47 @@
     catch (e) { message(e.message, true); $('#enabled').checked = state.enabled; }
   });
   function renderSync() {
-    const parts = [syncState.connected ? 'Google Drive 已连接' : '连接后可同步词本'];
+    const parts = [syncState.configured === false ? 'Google 登录待应用配置' : syncState.supported === false ? 'Google 登录当前支持 Chrome' : syncState.connected ? 'Google Drive 已连接' : '使用 Google 登录后可同步词本'];
     if (syncState.lastSync) parts.push(`上次同步：${new Date(syncState.lastSync).toLocaleString()}`);
     if (syncState.dirty) parts.push('有本地变更待同步');
     $('#sync-status').textContent = syncBusy ? '正在读取、合并并保存词本…' : parts.join(' · ');
-    if (!clientDirty && document.activeElement !== $('#drive-client')) $('#drive-client').value = syncState.clientId || '';
-    $('#drive-redirect').value = syncState.redirect || '';
     $('#drive-sync').disabled = syncBusy || !syncState.connected;
-    $('#drive-connect').disabled = syncBusy; $('#drive-connect').textContent = syncState.connected ? '切换 / 重新连接' : '连接 Google Drive';
+    $('#drive-connect').disabled = syncBusy || syncState.configured === false || syncState.supported === false; $('#drive-connect').textContent = syncState.connected ? '重新登录 Google' : '使用 Google 登录';
     $('#drive-disconnect').hidden = !syncState.connected; $('#drive-disconnect').disabled = syncBusy;
   }
   async function syncAction(type) {
-    const clientId = $('#drive-client').value.trim();
     syncBusy = true; renderSync();
     try {
-      const result = await send({ type, clientId }); syncState = result; if (type === 'DRIVE_CONNECT') clientDirty = false;
+      const result = await send({ type }); syncState = result;
       await refresh(); message(type === 'DRIVE_SYNC' ? `词本已同步，共 ${result.words.toLocaleString()} 个词。` : type === 'DRIVE_CONNECT' ? 'Google Drive 已连接，可点击立即同步。' : '本机已断开 Google Drive 连接。');
     } catch (e) { message(e.message, true); }
     finally { syncBusy = false; renderSync(); }
   }
-  $('#drive-client').addEventListener('input', () => { clientDirty = true; });
   $('#drive-connect').addEventListener('click', () => syncAction('DRIVE_CONNECT'));
   $('#drive-sync').addEventListener('click', () => syncAction('DRIVE_SYNC'));
   $('#drive-disconnect').addEventListener('click', () => syncAction('DRIVE_DISCONNECT'));
+  $('#export-backup').addEventListener('click', async () => {
+    const button = $('#export-backup'); button.disabled = true;
+    try {
+      const backup = await send({ type: 'EXPORT_BACKUP' });
+      const url = URL.createObjectURL(new Blob([JSON.stringify(backup)], { type: 'application/json' }));
+      const link = el('a'); link.href = url; link.download = `lexitrail-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.append(link); link.click(); link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      message('词本备份已导出。');
+    } catch (e) { message(e.message, true); } finally { button.disabled = false; }
+  });
+  $('#import-backup').addEventListener('click', () => $('#backup-file').click());
+  $('#backup-file').addEventListener('change', async () => {
+    const input = $('#backup-file'), file = input.files[0], button = $('#import-backup');
+    if (!file) return;
+    button.disabled = true;
+    try {
+      if (file.size > 8 * 1024 * 1024) throw Error('词本备份超过 8 MB。');
+      const result = await send({ type: 'IMPORT_BACKUP', text: await file.text() });
+      await refresh(); message(`备份已合并，现有 ${result.count.toLocaleString()} 个词。`);
+    } catch (e) { message(e.message, true); }
+    finally { button.disabled = false; input.value = ''; }
+  });
   chrome.storage.onChanged.addListener(changes => { if (changes.state) refresh().catch(e => message(e.message, true)); });
 })();

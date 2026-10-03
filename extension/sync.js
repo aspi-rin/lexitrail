@@ -69,7 +69,18 @@
     if (value?.app !== 'LexiTrail' || value.schema !== 1 || !/^[a-f0-9-]{36}$/.test(value.deviceId)) throw Error('云端文件属于其他应用或版本。');
     return cleanState(value.state);
   }
-  const api = { LIMIT, statusTime, cleanState, merge, snapshot, readSnapshot };
+  function backup(state) {
+    const value = { app: 'LexiTrailBackup', schema: 1, savedAt: Date.now(), state: cleanState(state) };
+    if (new TextEncoder().encode(JSON.stringify(value)).byteLength > LIMIT) throw Error('词本备份超过 8 MB。');
+    return value;
+  }
+  function readBackup(text) {
+    if (typeof text !== 'string' || new TextEncoder().encode(text).byteLength > LIMIT) throw Error('词本备份超过 8 MB 或格式无效。');
+    let value; try { value = JSON.parse(text); } catch { throw Error('词本备份 JSON 无效。'); }
+    if (value?.app !== 'LexiTrailBackup' || value.schema !== 1) throw Error('请选择 LexiTrail 导出的词本备份。');
+    return cleanState(value.state);
+  }
+  const api = { LIMIT, statusTime, cleanState, merge, snapshot, readSnapshot, backup, readBackup };
   root.LexiTrailSync = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

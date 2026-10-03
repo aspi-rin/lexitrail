@@ -4,47 +4,72 @@
   const API = 'https://www.googleapis.com/drive/v3/files';
   const PREFIX = 'lexitrail-device-';
   function create(chrome, request = fetch) {
-    const sessionReady = chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
-    async function session() { await sessionReady; return (await chrome.storage.session.get('driveAuth')).driveAuth; }
+    // Native Chrome identity keeps account tokens in its own cache.
+    const manifest = chrome.runtime.getManifest();
+    const clientId = manifest.oauth2?.client_id ?? '';
+    const configured = /^[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(clientId) && manifest.oauth2.scopes?.includes(SCOPE);
+    const sessionReady = (async () => {
+      await chrome.storage.session.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
+      await chrome.storage.session.remove('driveAuth'); // Remove the legacy token on upgrade.
+    })();
+    async function config() { await sessionReady; return (await chrome.storage.local.get('driveConfig')).driveConfig ?? {}; }
     async function status() {
-      const auth = await session(), config = (await chrome.storage.local.get('driveConfig')).driveConfig ?? {};
-      const local = (await chrome.storage.local.get('state')).state;
-      return { clientId: config.clientId ?? '', connected: Boolean(auth?.expiresAt > Date.now() + 30000), lastSync: config.lastSync ?? 0,
-        dirty: Boolean(local && (local.revision ?? 0) > (config.lastSyncRevision ?? -1)), redirect: chrome.identity.getRedirectURL('oauth2') };
+      const current = await config(), local = (await chrome.storage.local.get('state')).state;
+      const sameClient = current.clientId === clientId;
+      return { configured, supported: typeof chrome.identity.getAuthToken === 'function', connected: Boolean(configured && sameClient && current.connected),
+        lastSync: sameClient ? current.lastSync ?? 0 : 0,
+        dirty: Boolean(local && (local.revision ?? 0) > (sameClient ? current.lastSyncRevision ?? -1 : -1)) };
     }
-    async function connect(clientId) {
-      if (!/^[a-zA-Z0-9_-]+\.apps\.googleusercontent\.com$/.test(clientId)) throw Error('请填写 Google OAuth 客户端 ID。');
-      const nonce = crypto.randomUUID(), redirect = chrome.identity.getRedirectURL('oauth2');
-      const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-      url.search = new URLSearchParams({ client_id: clientId, redirect_uri: redirect, response_type: 'token', scope: SCOPE, state: nonce, prompt: 'select_account' }).toString();
-      let returned;
-      try { returned = await chrome.identity.launchWebAuthFlow({ url: url.href, interactive: true }); }
-      catch { throw Error('Google 授权未完成，请检查客户端 ID、回调地址及账号权限。'); }
-      let result; try { result = new URL(returned); } catch { throw Error('Google 授权响应无效。'); }
-      const expected = new URL(redirect), data = new URLSearchParams(result.hash.slice(1));
-      if (result.origin !== expected.origin || result.pathname !== expected.pathname || data.get('state') !== nonce) throw Error('Google 授权响应校验失败，请重新连接。');
-      if (data.has('error')) throw Error('Google 授权已取消或被拒绝。');
-      if (!data.get('scope')?.split(' ').includes(SCOPE)) throw Error('请授权 LexiTrail 的应用数据权限。');
-      const token = data.get('access_token'), seconds = Number(data.get('expires_in'));
-      if (!token || data.get('token_type')?.toLowerCase() !== 'bearer' || !Number.isFinite(seconds) || seconds <= 0) throw Error('Google 授权缺少有效凭据。');
-      const old = (await chrome.storage.local.get('driveConfig')).driveConfig ?? {};
-      await chrome.storage.local.set({ driveConfig: { clientId, deviceId: old.deviceId ?? crypto.randomUUID(), lastSync: old.clientId === clientId ? old.lastSync ?? 0 : 0,
-        lastSyncRevision: old.clientId === clientId ? old.lastSyncRevision ?? -1 : -1 } });
-      await chrome.storage.session.set({ driveAuth: { token, expiresAt: Date.now() + Math.min(seconds, 3600) * 1000 } });
+    async function authenticate(interactive) {
+      if (!configured) throw Error('Google 登录尚待应用配置，请按同步说明登记 Client ID。');
+      if (typeof chrome.identity.getAuthToken !== 'function') throw Error('此浏览器暂不支持原生 Google 登录，请使用 Chrome。');
+      let result;
+      try { result = await chrome.identity.getAuthToken({ interactive, scopes: [SCOPE], enableGranularPermissions: true }); }
+      catch { throw Error(interactive ? 'Google 登录未完成，请检查账号与应用登记后重试。' : 'Google 登录已失效，请重新登录后同步。'); }
+      if (!result?.token || !Array.isArray(result.grantedScopes) || !result.grantedScopes.includes(SCOPE)) {
+        if (result?.token) await chrome.identity.removeCachedAuthToken({ token: result.token });
+        throw Error('请授权 LexiTrail 的应用数据权限。');
+      }
+      return result.token;
+    }
+    async function connect() {
+      await sessionReady;
+      await authenticate(true);
+      const old = await config(), sameClient = old.clientId === clientId;
+      await chrome.storage.local.set({ driveConfig: { clientId, connected: true, deviceId: old.deviceId ?? crypto.randomUUID(),
+        lastSync: sameClient ? old.lastSync ?? 0 : 0, lastSyncRevision: sameClient ? old.lastSyncRevision ?? -1 : -1 } });
       return status();
     }
-    async function disconnect() { await sessionReady; await chrome.storage.session.remove('driveAuth'); return status(); }
+    async function disconnect() {
+      const current = await config();
+      if (current.connected && current.clientId === clientId) {
+        let cached;
+        try { cached = await chrome.identity.getAuthToken({ interactive: false, scopes: [SCOPE] }); } catch {}
+        if (cached?.token) await chrome.identity.removeCachedAuthToken({ token: cached.token });
+      }
+      await chrome.storage.local.set({ driveConfig: { ...current, connected: false } });
+      return status();
+    }
     async function token() {
-      const auth = await session();
-      if (!auth || auth.expiresAt <= Date.now() + 30000) throw Error('Google 连接已过期，请重新连接后同步。');
-      return auth.token;
+      const current = await config();
+      if (!current.connected || current.clientId !== clientId) throw Error('请先使用 Google 登录后同步。');
+      try { return await authenticate(false); }
+      catch (error) {
+        await chrome.storage.local.set({ driveConfig: { ...current, connected: false } });
+        throw error;
+      }
     }
     async function json(url, options = {}) {
       const credential = await token();
       let response;
       try { response = await request(url, { ...options, credentials: 'omit', referrerPolicy: 'no-referrer', signal: AbortSignal.timeout(30000), headers: { ...options.headers, Authorization: `Bearer ${credential}` } }); }
       catch { throw Error('Google Drive 网络请求失败，请稍后重试。'); }
-      if (response.status === 401) { await disconnect(); throw Error('Google 连接已失效，请重新连接。'); }
+      if (response.status === 401) {
+        await chrome.identity.removeCachedAuthToken({ token: credential });
+        const current = await config();
+        await chrome.storage.local.set({ driveConfig: { ...current, connected: false } });
+        throw Error('Google 登录已失效，请重新登录。');
+      }
       if (!response.ok) throw Error(response.status === 403 ? 'Google Drive 权限或空间不足，请检查授权与 Drive API。' : `Google Drive 暂时不可用（${response.status}）。`);
       const limit = root.LexiTrailSync.LIMIT;
       if (Number(response.headers?.get('content-length')) > limit) throw Error('云端同步文件过大。');

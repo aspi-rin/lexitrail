@@ -144,3 +144,24 @@ test('a malformed remote snapshot leaves the existing local wordbook intact', as
   const result = await w.send({ type: 'DRIVE_SYNC' }); assert.equal(result.ok, false);
   assert.equal(JSON.stringify(w.stored.state), original);
 });
+test('backups preserve saved learning material, merge local progress, and exclude credentials', async () => {
+  const source = worker({ deepseekKey: 'local credential', driveConfig: { clientId: 'private configuration' } });
+  await source.send({ type: 'INITIALIZE', levels: ['A1'] });
+  source.context.LexiTrailAPI.deepseek = async () => generated;
+  const result = (await source.send({ type: 'LOOKUP', word: 'quasar', context: 'Saved context.' })).data;
+  await source.send({ type: 'MARK_WORD', word: 'quasar', status: 'learning', lookup: result, example: { text: 'Reading source.' } });
+  const backup = (await source.send({ type: 'EXPORT_BACKUP' })).data;
+  const text = JSON.stringify(backup);
+  assert(!text.includes('local credential')); assert(!text.includes('private configuration'));
+  const target = worker({ deepseekKey: 'target credential' });
+  await target.send({ type: 'MARK_WORD', word: 'forest', status: 'mastered' });
+  assert((await target.send({ type: 'IMPORT_BACKUP', text })).ok);
+  assert.equal(target.stored.deepseekKey, 'target credential');
+  assert.equal(target.stored.state.words.forest.status, 'mastered');
+  assert.equal(target.stored.state.words.quasar.lookup.context, 'Saved context.');
+  assert.equal(target.stored.state.words.quasar.examples[0].text, 'Reading source.');
+  const before = JSON.stringify(target.stored.state);
+  const malformed = await target.send({ type: 'IMPORT_BACKUP', text: '{invalid' });
+  assert.equal(malformed.ok, false); assert.equal(JSON.stringify(target.stored.state), before);
+  for (const type of ['EXPORT_BACKUP', 'IMPORT_BACKUP']) assert.equal((await target.send({ type, text }, 'https://example.org')).ok, false);
+});

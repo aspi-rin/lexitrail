@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LexiTrail · 阅读积累英文词汇",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "CEFR 初始化词本、选词查词，以及个人生词和学习状态。",
   "minimum_chrome_version": "140",
   "permissions": [
@@ -37,5 +37,6 @@
       ],
       "run_at": "document_idle"
     }
-  ]
+  ],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA14iXWfBlgvbcD5kvLR4OQBNUKX1Vmqu8BeDzddxPhnZT7hXKo9XrIDGzBsv7FfT8/Mv1MXBpFsDPXCKA5fHWhOmwQcJCykcULB55xRadCrdJje4PKv2xbZwzcUGiSHL9wLP6PDzs/f0mlwmsHgShGgSL4Vhpc5015NUMQsVu4KTrVy/IGybV8Cq6/i6fXXYQrHsGrF0Zgh7/BnZXhYsdz1UuwXxzrdt18SmrKur4rcPp4bMPzP1kA1xFxW6J+4W6bElI+F/EWX/wSPaicxkZW0l5ILu0nLktO38vuSf3S9P4be5h03NuNenWwafoFaY/QgqiigF0VpcIf041xOGzTQIDAQAB"
 }

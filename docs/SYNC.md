@@ -1,45 +1,53 @@
 # Google Drive 同步
 
-本版使用 Google Drive 的应用数据区保存每台设备的 JSON 快照。插件直接调用 Drive API；服务端维护工作集中在 Google 的账号授权和存储中。应用数据区使用 `drive.appdata` 权限，文件由本应用访问，Google Drive 普通文件列表会隐藏它们。[Google 官方说明](https://developers.google.com/workspace/drive/api/guides/appdata)
+LexiTrail 使用 Google Drive 应用数据区保存每台设备的 JSON 快照；插件直接调用 Drive API。本地词本使用 `storage.local`，Google 登录采用 Chrome 原生 `identity.getAuthToken`，访问令牌由 Chrome 缓存并处理到期。扩展仅在您点击登录时显示授权界面；点击同步时使用已有授权。[Chrome 官方说明](https://developer.chrome.com/docs/extensions/reference/api/identity#getAuthToken)
 
-## 方案选择
+应用数据权限为 `https://www.googleapis.com/auth/drive.appdata`，Google Drive 普通文件列表会隐藏快照。[Google 官方说明](https://developers.google.com/workspace/drive/api/guides/appdata)
 
-| 方案 | 对当前词本的适合程度 |
-| --- | --- |
-| Google Drive 应用数据区 | 已采用。存储词本和例句快照，插件直接访问，一次设置 OAuth 客户端 |
-| Chrome storage.sync | 适合少量配置，总量约 100 KB，单项约 8 KB；当前词库及 AI 材料需要更大的空间 |
-| 独立数据库与后端 | 更适合账号体系、共享和高频实时同步；需要维护 API、鉴权、数据模型与服务部署 |
+## 用户操作
 
-Chrome 容量限制来自 [官方 storage API 文档](https://developer.chrome.com/docs/extensions/reference/api/storage)。本地使用 `storage.local` 与 `unlimitedStorage` 权限，Google 令牌使用受限的 `storage.session`，后台暂停可恢复，浏览器重启后需重新连接。
+应用完成下文的一次登记并构建后，设置页只需点击 **使用 Google 登录**，授权应用数据权限，再点击 **立即同步**。第二台电脑安装同一包、使用同一 Google 账号登录，再同步即可。设置页显示连接情况、上次同步时间和待同步变化。
 
-## 首次设置
+Google 登录当前面向 Chrome；阅读与本地词本功能支持 Chrome / Edge 140+。登录使用当前 Chrome 资料中的 Google 账号。需要换账号时，使用相应 Chrome 资料。断开连接清除本机缓存令牌和连接状态；云端快照继续保留，账号授权可从 Google 账号的第三方应用管理中撤销。
 
-1. 打开 [Google Cloud Console](https://console.cloud.google.com/)，选择您的个人项目，或创建用于 LexiTrail 的项目；启用 **Google Drive API**。
-2. 在 Google Auth Platform 配置应用名及受众。个人测试使用 External + Testing，并把自己的 Google 账号加入测试用户。权限添加 `https://www.googleapis.com/auth/drive.appdata`。
-3. 创建类型为 **Web application** 的 OAuth 客户端。保存 **Client ID**；本插件只使用公开客户端 ID。
-4. 打开插件设置 → Google Drive 同步 → 首次连接设置。复制“此设备回调地址”，在该 OAuth 客户端的 **Authorized redirect URIs** 中加入这个完整地址，含末尾路径。回调地址由 [Chrome identity API](https://developer.chrome.com/docs/extensions/reference/api/identity) 根据实际扩展 ID 生成。
-5. 把 Client ID 填入插件，点击“连接 Google Drive”，在 Google 页面选择账号并授权应用数据权限。
-6. 点击“立即同步”。第二台设备使用同一个 Client ID，把第二台的回调地址也加入同一客户端；连接同一个 Google 账号后点击同步。
+## 开发者一次登记
 
-升级当前已加载的插件时继续使用原目录，保留现有扩展身份和词本。各电脑的解压目录与扩展 ID 可能不同，允许列表须包含各设备显示的回调地址。
+当前已创建独立项目 **LexiTrail**，项目 ID `mercurial-song-510623-e1`。应用登记停留在 Google 用户数据政策确认页，Client ID 尚待创建；现有发布代码会明确显示“Google 登录待应用配置”。
 
-授权采用 Google 文档中的 token response，通过 Chrome `launchWebAuthFlow` 接收结果；实现校验回调来源、路径、随机 state、权限和过期时间。[Google OAuth 说明](https://developers.google.com/identity/protocols/oauth2/javascript-implicit-flow)
+1. 打开 [LexiTrail Google Auth Platform](https://console.cloud.google.com/auth/overview?project=mercurial-song-510623-e1)。应用名称填 LexiTrail，用户支持和联系邮箱使用项目所有者邮箱；受众选择 External / 外部，个人开发保持 Testing / 测试。
+2. 阅读并确认 **Google API 服务：用户数据政策**，完成应用登记。
+3. 在项目 API 库启用 **Google Drive API**；Google Auth Platform → 数据访问，添加 `https://www.googleapis.com/auth/drive.appdata`。目标对象 → 测试用户，加入自己用于同步的 Google 账号。
+4. Google Auth Platform → 客户端 → 创建客户端，类型选择 **Chrome Extension / Chrome 扩展程序**，名称 LexiTrail Chrome。Item ID 填 **`pabcjgpefkpmodichjomkgiflicagkec`**；该值由当前 manifest 中的公开扩展身份 key 导出，各电脑保持一致。[Chrome 官方登记指南](https://developer.chrome.com/docs/extensions/how-to/integrate/oauth#create-an-oauth-client-id)
+5. 复制 **Client ID**，在项目目录运行：
 
-## 同步内容和规则
+```sh
+node scripts/configure-google.js YOUR_CLIENT_ID.apps.googleusercontent.com
+npm run check
+npm test
+npm run build
+```
 
-同步三个个人词本的状态、中文义、保存的 AI 定义和双语例句、原文语境，以及阅读标注开关和初始等级记录。DeepSeek Key、Google 凭据、临时查询缓存及设备连接配置保留在各设备本地。
+该命令把公开 Client ID 写入 `extension/manifest.json` 的 `oauth2.client_id`，scope 固定为应用数据权限。用户使用构建后的包即可登录。
 
-每个安装实例拥有独立设备 ID 和一个 `lexitrail-device-<id>.json` 文件；同步读取各设备快照，合并后保存本设备的文件。某台设备的旧快照可由另一台读取，用户在另一台完成新变化后，原设备再同步即可获取这些变化。
+## 配置与安全
 
-- 学习状态按显式标记时间合并；初始 CEFR 导入使用基线时间，另一台新设备导入词库会保留已有的学习中/已掌握状态。
-- 原文语境按文本去重，保留最近十条；已保存 AI 材料优先保留首次有效查询，状态变化继续保留材料。
+Client ID 和 manifest `key` 均为公开应用标识，可以随源码与安装包分发。授权令牌由 Chrome 管理，取得后仅用于向 Google 的 HTTPS API 发送 Bearer 请求。DeepSeek Key 保存在本机受限的 `storage.local`，设置页可访问；Google 令牌与 Key 均从词本同步和本地备份中排除。此实现使用 Chrome 原生 OAuth 流程，旧版 `launchWebAuthFlow` 的 token response 和扩展 `driveAuth` 会话存储已移除。
+
+固定身份 key 用于本地开发安装；此版本未上传 Chrome 商店。日后商店分发需要核对商店所分配的扩展身份及 OAuth 客户端。旧版按目录生成的身份升级到固定身份时，按 [UPGRADE.md](UPGRADE.md) 导出并恢复词本。
+
+## 同步规则
+
+同步三个个人词本的状态、中文义、保存的 AI 定义和双语例句、原文语境、阅读标注开关和初始等级记录。DeepSeek Key、Google 凭据、临时查询缓存及设备连接配置保留在各设备本地。
+
+每个安装实例拥有独立设备 ID 和一个 `lexitrail-device-<id>.json` 文件。同步读取各设备快照，合并后保存本设备的文件；各设备分别点击同步，获取与上传最新变化。
+
+- 学习状态按显式标记时间合并；初始 CEFR 导入采用基线时间，新设备初始化会保留已有学习进度。
+- 原文语境按文本去重，保留最近十条；已保存 AI 材料优先保留首次有效查询。
 - 阅读开关使用独立更新时间；各设备时间须正常。同一时间的状态冲突按生词→学习中→已掌握顺序取后者。
-- 同步期间的新标记会保留在本地，完成后显示“有本地变更待同步”，再次同步即可上传；网络失败保留本地词本，可重试。
+- 同步期间的新标记保留在本地，完成后显示“有本地变更待同步”，再次同步即可上传；网络失败保留本地词本并可重试。
 
-首版采用用户点击“立即同步”的方式，状态区显示连接情况、上次同步时间和待同步变化。令牌通常一小时到期，届时点击重新连接。断开连接清除本机令牌；云端快照继续保留，Google 账号的应用授权可在账号权限管理中撤销。
-
-单次快照最多 8 MB，词条数最多 50,000；超限或损坏文件会给出提示。此版按词保存完整 JSON 快照，适合个人词本；自动后台同步、单词删除和更细的冲突历史留待后续版本定义。
+单次快照最多 8 MB、50,000 词，文件损坏或超限会提示。首版采用手动同步；自动后台同步、单词删除和更细的冲突历史留待后续定义。
 
 ## 验证边界
 
-OAuth 响应、Drive 文件分页/读写、数据合并、授权错误和并发本地编辑已使用模拟服务测试。实际 Google 授权和两台设备的云端往返需要完成上述客户端登记，并在已加载的扩展中验收。开发夹具使用模拟 Google Drive，不会写入真实账号。
+原生 OAuth 响应、授权过期、Drive 分页/读写、数据合并与并发本地编辑已使用模拟服务测试。实际 Google 登录和双设备云端往返需登记真实 Client ID 并在扩展中验收。开发夹具标注模拟服务，真实账号尚无本轮词本上传。

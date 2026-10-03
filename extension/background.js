@@ -80,7 +80,7 @@ async function handle(message, sender) {
     case 'DRIVE_CONNECT': {
       if (!trusted(sender)) throw new Error('请在设置页连接 Google Drive。');
       if (syncJob) throw new Error('同步正在进行，请完成后切换连接。');
-      return drive.connect(String(message.clientId ?? '').trim());
+      return drive.connect();
     }
     case 'DRIVE_DISCONNECT': {
       if (!trusted(sender)) throw new Error('请在设置页断开连接。');
@@ -104,6 +104,22 @@ async function handle(message, sender) {
       })();
       const job = syncJob;
       try { return await job; } finally { if (syncJob === job) syncJob = null; }
+    }
+    case 'EXPORT_BACKUP': {
+      if (!trusted(sender)) throw new Error('请在设置页导出词本。');
+      await writes;
+      return LexiTrailSync.backup(await state());
+    }
+    case 'IMPORT_BACKUP': {
+      if (!trusted(sender)) throw new Error('请在设置页导入词本。');
+      const imported = LexiTrailSync.readBackup(message.text);
+      return serialized(async () => {
+        const local = await state(), combined = LexiTrailSync.merge(local, imported);
+        combined.revision = (local.revision ?? 0) + 1;
+        C.enrich(combined, translations);
+        await chrome.storage.local.set({ state: combined }); await notify();
+        return { count: Object.keys(combined.words).length };
+      });
     }
     case 'INITIALIZE': {
       if (!trusted(sender)) throw new Error('请在设置页初始化词本。');

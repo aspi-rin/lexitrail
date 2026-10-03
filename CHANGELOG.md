@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.4 — 2026-10-04
+
+- Shared manifest OAuth configuration and native Chrome Google sign-in; real Client ID registration is pending the owner's Google terms confirmation.
+- Stable unpacked extension identity, credential-free vocabulary backup/import, and a legacy identity migration package.
+- Hover cards on marked English words, delayed lookup, card interaction without focus theft, and marked link click interception with an original-link action.
+- Stable ZIP directory for future manual upgrades.
+
 ## 0.0.3 — 2026-10-03
 
 - First Git version, as requested by the owner; previous 0.1.0/0.2.0 packages below were local previews.
