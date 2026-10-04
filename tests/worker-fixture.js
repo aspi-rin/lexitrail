@@ -5,8 +5,8 @@ const root = path.join(__dirname, '../extension');
 function worker(initial = {}, data = {}) {
   const stored = structuredClone(initial), calls = [], listeners = [], temporary = {};
   const runtime = { id: 'fixture', getManifest: () => ({ oauth2: { client_id: 'fixture.apps.googleusercontent.com', scopes: ['https://www.googleapis.com/auth/drive.appdata'] } }), getURL: p => `chrome-extension://fixture/${p}`, onMessage: { addListener: f => listeners.push(f) }, openOptionsPage: async () => {} };
-  const context = vm.createContext({ console, URL, URLSearchParams, TextEncoder, TextDecoder, AbortSignal, crypto: require('node:crypto').webcrypto, setTimeout, clearTimeout,
-    chrome: { runtime, identity: { getAuthToken: async () => ({ token: 'fixture-token', grantedScopes: ['https://www.googleapis.com/auth/drive.appdata'] }), removeCachedAuthToken: async () => {} }, storage: { session: {
+  const context = vm.createContext({ console, btoa, URL, URLSearchParams, TextEncoder, TextDecoder, AbortSignal, crypto: require('node:crypto').webcrypto, setTimeout, clearTimeout,
+    chrome: { runtime, permissions: { contains: async () => true }, identity: { getAuthToken: async () => ({ token: 'fixture-token', grantedScopes: ['https://www.googleapis.com/auth/drive.appdata'] }), removeCachedAuthToken: async () => {} }, storage: { session: {
       setAccessLevel: async () => {}, get: async key => ({ [key]: structuredClone(temporary[key]) }),
       set: async values => Object.assign(temporary, structuredClone(values)), remove: async key => { delete temporary[key]; }
     }, local: {

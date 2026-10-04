@@ -1,4 +1,19 @@
-# Google Drive 同步
+# 手动同步
+
+设置页可选择 WebDAV 或 Google Drive；两者使用相同的词本合并规则，只在点击“立即同步”时执行。切换方式会保留已有本地词本，各种连接与上次同步记录独立保存在本机。
+
+## WebDAV 操作
+
+1. 在提供商账户开启应用连接，取得 HTTPS WebDAV 文件夹地址、连接账号和应用密码。InfiniCLOUD 对应 WebDAV Connection URL、Connection ID 和 Apps Password。[提供商说明](https://infini-cloud.net/en/support_account_login-settings_apps.html)
+2. 在设置页选择 **WebDAV**，填写三个字段，点击 **验证并保存连接**。浏览器只为该地址申请可选主机权限；服务器需支持 Basic 认证与 PROPFIND、MKCOL、GET、PUT。验证只读取指定文件夹属性。[Chrome 可选权限](https://developer.chrome.com/docs/extensions/reference/api/permissions#method-request)、[WebDAV 标准](https://www.rfc-editor.org/rfc/rfc4918.html)
+3. 点击 **立即同步**。首次同步创建指定目录的 `LexiTrail/` 子文件夹；每台设备保存自己的 `lexitrail-device-<id>.json`。其他设备填写同一地址与账号并分别同步，A→B→A 可以让两台设备获取最新合并结果。
+4. 密码保存后输入框清空，留空保存可沿用同一地址与账号的原密码。修改地址或账号时需要填写密码。**清除本机连接** 删除保存的地址、账号与密码，云端文件继续保留。
+
+WebDAV 支持 Chrome / Edge 140+，账号应具备该目录的读写与创建文件夹权限。请求使用 HTTPS、30 秒超时，拒绝重定向，避免密码随跳转发送；请填写提供商给出的最终地址。文件清单只处理指定同步目录内的设备 JSON，限制为最多 1,000 台设备，单个文件最多 8 MB。401 表示服务器拒绝账号或应用密码；403 表示权限不足；其他失败请检查路径、网络和剩余空间。
+
+WebDAV 地址、账号、密码属于本机受限的扩展存储；设置页只获取地址、账号和配置状态，已保存密码由后台使用。网页脚本的请求、云端快照与词本备份均无法取得连接凭据。主题偏好同样保留在本机。云端词本为 JSON，包含收藏原文语境，应按个人学习资料管理。
+
+## Google Drive 同步
 
 LexiTrail 使用 Google Drive 应用数据区保存每台设备的 JSON 快照；插件直接调用 Drive API。本地词本使用 `storage.local`，Google 登录采用 Chrome 原生 `identity.getAuthToken`，访问令牌由 Chrome 缓存并处理到期。扩展仅在您点击登录时显示授权界面；点击同步时使用已有授权。[Chrome 官方说明](https://developer.chrome.com/docs/extensions/reference/api/identity#getAuthToken)
 
@@ -39,7 +54,7 @@ Client ID 和 manifest `key` 均为公开应用标识，可以随源码与安装
 
 ## 同步规则
 
-同步三个个人词本的状态、中文义、保存的 AI 定义和双语例句、原文语境、阅读标注开关和初始等级记录。DeepSeek Key、Google 凭据、临时查询缓存及设备连接配置保留在各设备本地。
+同步三个个人词本的状态、中文义、保存的 AI 定义和双语例句、原文语境、阅读标注开关和初始等级记录。DeepSeek Key、WebDAV/Google 凭据、临时查询缓存及设备连接配置保留在各设备本地。
 
 每个安装实例拥有独立设备 ID 和一个 `lexitrail-device-<id>.json` 文件。同步读取各设备快照，合并后保存本设备的文件；各设备分别点击同步，获取与上传最新变化。
 
@@ -51,5 +66,7 @@ Client ID 和 manifest `key` 均为公开应用标识，可以随源码与安装
 单次快照最多 8 MB、50,000 词，文件损坏或超限会提示。首版采用手动同步；自动后台同步、单词删除和更细的冲突历史留待后续定义。
 
 ## 验证边界
+
+0.0.5 的 WebDAV 连接/独立快照读写、两客户端合并、地址权限、凭据清除、异常 XML/JSON 和并发本地编辑通过模拟服务测试。提供商真实连接本轮由生产模块与独立 HTTP 客户端各尝试一次，均返回 401；临时凭据已清理，服务器未创建测试目录，真实往返需有效应用凭据后补验。设置页两种配色与模拟 WebDAV 保存/同步已在 Chrome 本地测试页验证。
 
 原生 OAuth 响应、授权过期、Drive 分页/读写、数据合并与并发本地编辑已使用模拟服务测试。真实 Client ID 和 Cloud 配置已登记并在控制台核对；实际 Google 登录和双设备云端往返需在加载后的扩展中验收。开发夹具标注模拟服务，真实账号尚无本轮词本上传。

@@ -88,3 +88,47 @@ test('backup buttons download a JSON payload and read a selected file through th
   assert(w.document.querySelector('#message').textContent.includes('备份已合并'));
   dom.window.close();
 });
+test('single sun/moon button follows system initially, toggles opposite and persists across reloads', async () => {
+  const open = (dark, preference = '') => {
+    const dom = new JSDOM(fs.readFileSync(path.join(root, 'options.html'), 'utf8'), { url: 'https://example.org/options.html', runScripts: 'outside-only' });
+    const w = dom.window; let changed;
+    const media = { matches: dark, addEventListener: (_, fn) => changed = fn };
+    w.matchMedia = () => media; if (preference) w.localStorage.setItem('lexitrail-theme', preference);
+    w.chrome = { runtime: { sendMessage: async m => ({ ok: true, data: m.type === 'GET_LEVELS' ? [] : m.type === 'GET_STATE' ? { state: { initialized: true, enabled: true, levels: [], words: {} } } : {} }) }, storage: { onChanged: { addListener: () => {} } } };
+    w.eval(fs.readFileSync(path.join(root, 'core.js'), 'utf8')); w.eval(fs.readFileSync(path.join(root, 'options.js'), 'utf8'));
+    return { dom, w, media, change: () => changed() };
+  };
+  for (const dark of [false, true]) {
+    const f = open(dark); const button = f.w.document.querySelector('#theme-toggle');
+    assert.equal(f.w.document.documentElement.dataset.theme, undefined); assert.equal(button.title, dark ? '切换为浅色' : '切换为深色');
+    assert.equal(f.w.document.querySelector('#theme-sun').hasAttribute('hidden'), !dark);
+    button.click(); const chosen = dark ? 'light' : 'dark'; assert.equal(f.w.document.documentElement.dataset.theme, chosen);
+    assert.equal(f.w.localStorage.getItem('lexitrail-theme'), chosen);
+    f.media.matches = !dark; f.change(); assert.equal(f.w.document.documentElement.dataset.theme, chosen);
+    const reload = open(dark, chosen); assert.equal(reload.w.document.documentElement.dataset.theme, chosen);
+    await new Promise(r => setTimeout(r, 10)); f.dom.window.close(); reload.dom.window.close();
+  }
+});
+test('WebDAV permission is requested in click gesture, password clears after save and denied permission sends no credentials', async () => {
+  const dom = new JSDOM(fs.readFileSync(path.join(root, 'options.html'), 'utf8'), { url: 'https://example.org/options.html', runScripts: 'outside-only' });
+  const w = dom.window, calls = [], permissions = []; let allowed = false, configured = false;
+  w.chrome = { permissions: { request: input => { permissions.push(input.origins[0]); return Promise.resolve(allowed); } }, runtime: { sendMessage: async m => {
+    calls.push(m);
+    if (m.type === 'GET_LEVELS') return { ok:true, data:[] };
+    if (m.type === 'GET_STATE') return { ok:true, data:{state:{initialized:true,enabled:true,levels:[],words:{}}} };
+    if (m.type === 'GET_SETTINGS') return { ok:true, data:{provider:'webdav',webdav:{configured,connected:configured,url:configured?'https://dav.example/dav/':'',username:configured?'fixture-user':''}} };
+    if (m.type === 'WEBDAV_CONNECT') configured = true;
+    return { ok:true, data:{} };
+  } }, storage: { onChanged: { addListener: () => {} } } };
+  for (const file of ['core.js','webdav.js','options.js']) w.eval(fs.readFileSync(path.join(root,file),'utf8'));
+  await new Promise(r => setTimeout(r, 10));
+  const input = w.document.querySelector('#webdav-password'), button = w.document.querySelector('#webdav-connect');
+  w.document.querySelector('#webdav-url').value = 'https://dav.example/dav'; w.document.querySelector('#webdav-username').value = 'fixture-user'; input.value = 'fixture-password';
+  button.click(); assert.deepEqual(permissions,['https://dav.example/*']);
+  await new Promise(r => setTimeout(r,10)); assert(!calls.some(m=>m.type==='WEBDAV_CONNECT'));
+  allowed = true; button.click(); await new Promise(r => setTimeout(r,10));
+  assert.equal(calls.find(m=>m.type==='WEBDAV_CONNECT').password,'fixture-password'); assert.equal(input.value,''); assert(input.placeholder.includes('已保存'));
+  assert(!w.document.querySelector('#drive-sync').disabled);
+  input.value = 'replacement'; input.dispatchEvent(new w.Event('input')); assert(w.document.querySelector('#drive-sync').disabled);
+  dom.window.close();
+});

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.5 — 2026-10-05
+
+- Optional HTTPS WebDAV manual sync, per-device snapshots in a dedicated LexiTrail folder, connection verification and local credential removal.
+- Provider selection preserves existing Google sign-in and the shared wordbook merge rules.
+- System-default light/dark appearance with a single sun/moon toggle and local preference persistence.
+- Scoped runtime host permission, redirect refusal, bounded DAV XML/JSON parsing and credential-free backups.
+
 ## 0.0.4 — 2026-10-04
 
 - Shared manifest OAuth configuration and native Chrome Google sign-in; the registered Chrome client is bundled, with Drive appdata enabled and the owner added as a test user.

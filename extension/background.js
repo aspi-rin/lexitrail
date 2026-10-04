@@ -1,5 +1,5 @@
 'use strict';
-importScripts('core.js', 'api.js', 'sync.js', 'google-drive.js');
+importScripts('core.js', 'api.js', 'sync.js', 'google-drive.js', 'webdav.js');
 const C = LexiTrail;
 const dictionaryReady = fetch(chrome.runtime.getURL('data/cefr.json')).then(r => r.json());
 const translationsReady = fetch(chrome.runtime.getURL('data/translations.json')).then(r => r.json());
@@ -11,7 +11,14 @@ const lookups = new Map(), pendingLookups = new Map();
 const CACHE_LIMIT = 1000;
 let cacheGeneration = 0;
 const drive = LexiTrailDrive.create(chrome);
+const webdav = LexiTrailWebDAV.create(chrome);
 let syncJob = null;
+let syncProvider = '', connectionBusy = false;
+async function changeConnection(operation) {
+  if (syncJob || connectionBusy) throw Error('同步或连接验证正在进行，请完成后再切换连接。');
+  connectionBusy = true;
+  try { return await operation(); } finally { connectionBusy = false; }
+}
 async function state() {
   await secured;
   return (await chrome.storage.local.get('state')).state ?? C.emptyState();
@@ -75,22 +82,39 @@ async function handle(message, sender) {
     }
     case 'GET_SETTINGS': {
       if (!trusted(sender)) throw new Error('请在设置页查看配置。');
-      return { key: (await chrome.storage.local.get('deepseekKey')).deepseekKey ?? '', sync: await drive.status() };
+      return { key: (await chrome.storage.local.get('deepseekKey')).deepseekKey ?? '', sync: await drive.status(), webdav: await webdav.status(),
+        provider: (await chrome.storage.local.get('syncProvider')).syncProvider ?? 'google' };
+    }
+    case 'SYNC_PROVIDER': {
+      if (!trusted(sender)) throw Error('请在设置页选择同步方式。');
+      if (!['google', 'webdav'].includes(message.provider)) throw Error('同步方式无效。');
+      return changeConnection(async () => { await chrome.storage.local.set({ syncProvider: message.provider }); return {}; });
+    }
+    case 'WEBDAV_CONNECT': {
+      if (!trusted(sender)) throw Error('请在设置页保存 WebDAV 连接。');
+      return changeConnection(() => webdav.connect(message));
+    }
+    case 'WEBDAV_DISCONNECT': {
+      if (!trusted(sender)) throw Error('请在设置页清除 WebDAV 连接。');
+      return changeConnection(() => webdav.disconnect());
     }
     case 'DRIVE_CONNECT': {
       if (!trusted(sender)) throw new Error('请在设置页连接 Google Drive。');
-      if (syncJob) throw new Error('同步正在进行，请完成后切换连接。');
-      return drive.connect();
+      return changeConnection(() => drive.connect());
     }
     case 'DRIVE_DISCONNECT': {
       if (!trusted(sender)) throw new Error('请在设置页断开连接。');
-      if (syncJob) throw new Error('同步正在进行，请完成后断开连接。');
-      return drive.disconnect();
+      return changeConnection(() => drive.disconnect());
     }
-    case 'DRIVE_SYNC': {
+    case 'DRIVE_SYNC':
+    case 'WEBDAV_SYNC': {
       if (!trusted(sender)) throw new Error('请在设置页同步词本。');
+      const provider = message.type === 'WEBDAV_SYNC' ? 'webdav' : 'google', remote = provider === 'webdav' ? webdav : drive;
+      if (connectionBusy) throw Error('连接验证正在进行，请完成后同步。');
+      if (syncJob && syncProvider !== provider) throw Error('另一种同步正在进行，请完成后重试。');
+      syncProvider = provider;
       if (!syncJob) syncJob = (async () => {
-        const snapshots = await drive.load();
+        const snapshots = await remote.load();
         const merged = await serialized(async () => {
           const local = await state();
           let combined = LexiTrailSync.cleanState(local);
@@ -99,8 +123,8 @@ async function handle(message, sender) {
           C.enrich(combined, translations);
           await chrome.storage.local.set({ state: combined }); await notify(); return combined;
         });
-        await drive.save(merged, snapshots);
-        return { ...await drive.status(), words: Object.keys(merged.words).length };
+        await remote.save(merged, snapshots);
+        return { ...await remote.status(), words: Object.keys(merged.words).length };
       })();
       const job = syncJob;
       try { return await job; } finally { if (syncJob === job) syncJob = null; }

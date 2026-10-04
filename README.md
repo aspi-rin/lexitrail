@@ -1,6 +1,6 @@
 # LexiTrail
 
-英文阅读词汇插件，Chrome / Edge Manifest V3，版本 0.0.4。
+英文阅读词汇插件，Chrome / Edge Manifest V3，版本 0.0.5。
 
 ## 安装和使用
 
@@ -32,9 +32,15 @@
 
 发音使用有道词典的公开发音入口，当前可直接获取音频，无需 Key。音频请求失败时使用浏览器/系统英文语音；AI 服务异常时仍可发音、标记和保存语境，并显示可重试的原因。AI 查询由选词查词或英文虚线词头停留触发，发音请求由发音按钮触发，网页扫描在本地运行。
 
-## Google Drive 同步
+## 手动同步
 
-在设置页连接 Google Drive 后，点击“立即同步”合并各设备词本、释义、例句和阅读标注设置。方案采用应用专用 JSON 快照，数据由插件直接访问。应用开发者在 Google Cloud 统一登记公开 OAuth Client ID 并写入 manifest，用户点击“使用 Google 登录”即可授权。当前安装包已包含登记完成的 Client ID；应用处于测试模式，已添加项目所有者账号。新增账号需加入 Google Cloud 测试用户列表。Google 原生登录当前支持 Chrome；完整步骤与规则见 [docs/SYNC.md](docs/SYNC.md)。DeepSeek Key 保留在每台设备本地。
+设置页可选择 **WebDAV** 或 **Google Drive**。WebDAV 填写 HTTPS 地址、连接账号和应用密码，点击“验证并保存连接”，按提示允许该地址访问，再点击“立即同步”。快照保存在指定目录的 `LexiTrail/` 文件夹，每台设备使用独立文件；密码保留在本机，清除本机连接会删除保存的地址、账号与密码。各设备填写同一地址与账号，分别点击同步。
+
+连接 Google Drive 后，点击“立即同步”合并各设备词本、释义、例句和阅读标注设置。方案采用应用专用 JSON 快照，数据由插件直接访问。应用开发者在 Google Cloud 统一登记公开 OAuth Client ID 并写入 manifest，用户点击“使用 Google 登录”即可授权。当前安装包已包含登记完成的 Client ID；应用处于测试模式，已添加项目所有者账号。新增账号需加入 Google Cloud 测试用户列表。Google 原生登录当前支持 Chrome；完整步骤与规则见 [docs/SYNC.md](docs/SYNC.md)。DeepSeek Key 保留在每台设备本地。
+
+## 设置页配色
+
+词本与设置页首次打开跟随浏览器系统配色。右上角太阳/月亮按钮一键切换浅色或深色，并记住本机选择；配色偏好保留在当前安装。
 
 ## 开发和验证
 
@@ -49,6 +55,6 @@ npm test
 npm run build
 ```
 
-构建输出位于 `dist/lexitrail/` 和 `dist/lexitrail-0.0.4.zip`；`node scripts/build.js --migration` 生成旧身份备份迁移包。数据来源、固定版本与许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+构建输出位于 `dist/lexitrail/` 和 `dist/lexitrail-0.0.5.zip`；`node scripts/build.js --migration` 生成旧身份备份迁移包。数据来源、固定版本与许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-当前本地分支 `feat/google-login` 使用个人 Git 身份。老板已授权这个个人项目直接提交并推送，实质风险另行审核。首次正式 Git 提交版本为 0.0.3；0.1 由老板宣布首个可用小版本时启用。
+当前本地分支 `feat/webdav-sync` 使用个人 Git 身份。老板已授权这个个人项目直接提交并推送，实质风险另行审核。首次正式 Git 提交版本为 0.0.3；0.1 由老板宣布首个可用小版本时启用。

@@ -165,3 +165,30 @@ test('backups preserve saved learning material, merge local progress, and exclud
   assert.equal(malformed.ok, false); assert.equal(JSON.stringify(target.stored.state), before);
   for (const type of ['EXPORT_BACKUP', 'IMPORT_BACKUP']) assert.equal((await target.send({ type, text }, 'https://example.org')).ok, false);
 });
+test('WebDAV config is settings-only and excluded from public state/backups; sync shares merge and keeps local edits pending', async () => {
+  const w = worker({ webdavConfig: { url: 'https://fixture.example/', username: 'fixture-user', password: 'private-fixture' } });
+  for (const type of ['SYNC_PROVIDER', 'WEBDAV_CONNECT', 'WEBDAV_DISCONNECT', 'WEBDAV_SYNC']) assert.equal((await w.send({ type, provider: 'webdav' }, 'https://example.org')).ok, false);
+  for (const type of ['GET_STATE', 'EXPORT_BACKUP', 'GET_SETTINGS']) assert(!JSON.stringify((await w.send({ type })).data).includes('private-fixture'));
+  const d = vm.runInContext('webdav', w.context), C = w.context.LexiTrail;
+  let start, finish; const began = new Promise(r => start = r);
+  const remote = C.emptyState(); C.mark(remote, 'forest', 'mastered', {}, {}, 100);
+  d.load = async () => [{ state: remote }];
+  d.save = async snapshot => { start(); await new Promise(r => finish = r); w.stored.webdavConfig.lastSyncRevision = snapshot.revision; };
+  const sync = w.send({ type: 'WEBDAV_SYNC' }); await began;
+  assert.equal((await w.send({ type: 'WEBDAV_DISCONNECT' })).ok, false);
+  assert.equal((await w.send({ type: 'SYNC_PROVIDER', provider: 'google' })).ok, false);
+  assert.equal((await w.send({ type: 'DRIVE_SYNC' })).ok, false);
+  await w.send({ type: 'MARK_WORD', word: 'quasar', status: 'learning' });
+  finish(); const result = await sync;
+  assert(result.ok); assert(result.data.dirty); assert.equal(w.stored.state.words.quasar.status, 'learning'); assert.equal(w.stored.state.words.forest.status, 'mastered');
+});
+test('concurrent connection validation locks provider changes and sync until it finishes', async () => {
+  const w = worker(), d = vm.runInContext('webdav', w.context);
+  let start, finish; const began = new Promise(r => start = r);
+  d.connect = async () => { start(); await new Promise(r => finish = r); return {}; };
+  const connection = w.send({ type: 'WEBDAV_CONNECT' }); await began;
+  for (const type of ['WEBDAV_CONNECT', 'WEBDAV_SYNC', 'DRIVE_CONNECT', 'DRIVE_DISCONNECT', 'SYNC_PROVIDER']) assert.equal((await w.send({ type, provider: 'google' })).ok, false);
+  finish(); assert((await connection).ok);
+  assert((await w.send({ type: 'SYNC_PROVIDER', provider: 'webdav' })).ok);
+  assert.equal((await w.send({ type: 'GET_SETTINGS' })).data.provider, 'webdav');
+});

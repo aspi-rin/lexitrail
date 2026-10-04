@@ -28,6 +28,20 @@ const cloudRequest = async (url, options) => {
   return new Response(JSON.stringify(data));
 };
 Object.assign(vm.runInContext('drive', backend.context), backend.context.LexiTrailDrive.create(backend.context.chrome, cloudRequest));
+// Simulated WebDAV implements only the dedicated app folder and device files.
+const davFiles = new Map(); let davFolder = false;
+const davRequest = async (url, options) => {
+  const pathname = new URL(url).pathname;
+  if (options.method === 'MKCOL') { davFolder = true; return new Response(null, { status: 201 }); }
+  if (options.method === 'PUT') { davFiles.set(pathname, options.body); return new Response(null, { status: 204 }); }
+  if (options.method === 'PROPFIND') {
+    if (pathname.endsWith('LexiTrail/') && !davFolder) return new Response(null, { status: 404 });
+    const items = [pathname, ...(!pathname.endsWith('LexiTrail/') ? [] : davFiles.keys())];
+    return new Response('<d:multistatus xmlns:d="DAV:">' + items.map(href => '<d:response><d:href>' + href + '</d:href><d:propstat><d:prop><d:resourcetype>' + (href.endsWith('/') ? '<d:collection/>' : '') + '</d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response>').join('') + '</d:multistatus>', { status: 207 });
+  }
+  return new Response(davFiles.get(pathname));
+};
+Object.assign(vm.runInContext('webdav', backend.context), backend.context.LexiTrailWebDAV.create(backend.context.chrome, davRequest));
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.md': 'text/plain' };
 const stub = `(() => {
   const listeners = [], channel = new BroadcastChannel('lexitrail-fixture');
@@ -35,13 +49,13 @@ const stub = `(() => {
   Element.prototype.attachShadow = function(options) { return originalShadow.call(this, {...options, mode:'open'}); };
   const changed = () => listeners.forEach(f => f({state:{}}));
   channel.onmessage = changed;
-  window.chrome = {storage:{onChanged:{addListener:f=>listeners.push(f)}},runtime:{
+  window.chrome = {permissions:{request:async()=>true},storage:{onChanged:{addListener:f=>listeners.push(f)}},runtime:{
     onMessage:{addListener:f=>listeners.push(()=>f({type:'STATE_CHANGED'}))},
     openOptionsPage:async()=>{location.href='/options.html'},
     sendMessage: async message => {
       if(message.type==='OPEN_OPTIONS'){location.href='/options.html';return {ok:true,data:{}};}
       const response = await fetch('/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,settings:location.pathname==='/options.html'})}).then(r=>r.json());
-      if(['INITIALIZE','MARK_WORD','SAVE_SETTINGS','LOOKUP','DRIVE_CONNECT','DRIVE_DISCONNECT','DRIVE_SYNC','IMPORT_BACKUP'].includes(message.type) && response.ok){changed();channel.postMessage('changed');}
+      if(['INITIALIZE','MARK_WORD','SAVE_SETTINGS','LOOKUP','DRIVE_CONNECT','DRIVE_DISCONNECT','DRIVE_SYNC','IMPORT_BACKUP','SYNC_PROVIDER','WEBDAV_CONNECT','WEBDAV_DISCONNECT','WEBDAV_SYNC'].includes(message.type) && response.ok){changed();channel.postMessage('changed');}
       return response;
     }
   }};
@@ -62,6 +76,6 @@ http.createServer(async (req, res) => {
   const file = path.resolve(root, '.' + (pathname === '/' ? '/options.html' : pathname));
   if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
   let data = fs.readFileSync(file);
-  if (file.endsWith('options.html')) data = data.toString().replace('<script src="options.js"', '<script src="fixture.js" defer></script><script src="options.js"').replace('<main>', '<main><p class="muted">浏览器测试页 · 模拟 LLM / Google Drive</p>');
+  if (file.endsWith('options.html')) data = data.toString().replace('<script src="options.js"', '<script src="fixture.js" defer></script><script src="options.js"').replace('<main>', '<main><p class="muted">浏览器测试页 · 模拟 LLM / Google Drive / WebDAV</p>');
   res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'text/plain', 'Cache-Control': 'no-store' }); res.end(data);
 }).listen(8781, '127.0.0.1', () => console.log('Browser fixture: http://127.0.0.1:8781/options.html'));

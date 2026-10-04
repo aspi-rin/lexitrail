@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "LexiTrail · 阅读积累英文词汇",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "CEFR 初始化词本、选词查词，以及个人生词和学习状态。",
   "minimum_chrome_version": "140",
   "permissions": [
@@ -44,5 +44,8 @@
     "scopes": [
       "https://www.googleapis.com/auth/drive.appdata"
     ]
-  }
+  },
+  "optional_host_permissions": [
+    "https://*/*"
+  ]
 }

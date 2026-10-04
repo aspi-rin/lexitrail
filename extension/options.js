@@ -1,7 +1,7 @@
 (async function () {
   'use strict';
   const C = LexiTrail;
-  let state = C.emptyState(), tab = 'new', page = 0, hasKey = false, keyDirty = false, syncState = {}, syncBusy = false;
+  let state = C.emptyState(), tab = 'new', page = 0, hasKey = false, keyDirty = false, syncState = {}, syncBusy = false, provider = 'google', webdavState = {}, webdavDirty = false;
   const PAGE_SIZE = 40, $ = selector => document.querySelector(selector);
   function el(tag, text, className) { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; }
   async function send(message) {
@@ -63,12 +63,38 @@
     $('#page-number').textContent = `${page + 1} / ${pages}`; $('#previous').disabled = page === 0; $('#next').disabled = page >= pages - 1;
     $('#seed-description').textContent = state.initialized ? `初始等级：${state.levels.join('、')}。现在由三个个人词本维护每个词的状态。` : '首次使用时，您可以选择多个 CEFR 等级。';
   }
+  const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)');
+  let theme = '';
+  try { theme = localStorage.getItem('lexitrail-theme') || ''; } catch {}
+  if (!['light', 'dark'].includes(theme)) theme = '';
+  function renderTheme() {
+    const dark = theme ? theme === 'dark' : Boolean(systemTheme?.matches);
+    if (theme) document.documentElement.dataset.theme = theme;
+    else delete document.documentElement.dataset.theme;
+    $('#theme-sun').toggleAttribute('hidden', !dark);
+    $('#theme-moon').toggleAttribute('hidden', dark);
+    $('#theme-toggle').title = dark ? '切换为浅色' : '切换为深色';
+    $('#theme-toggle').setAttribute('aria-label', $('#theme-toggle').title);
+  }
+  renderTheme(); systemTheme?.addEventListener('change', renderTheme);
+  $('#theme-toggle').addEventListener('click', () => {
+    const dark = theme ? theme === 'dark' : Boolean(systemTheme?.matches);
+    theme = dark ? 'light' : 'dark';
+    try { localStorage.setItem('lexitrail-theme', theme); } catch {}
+    renderTheme();
+  });
   async function refresh() {
     const data = await send({ type: 'GET_STATE' }); state = data.state;
     hasKey = data.hasKey;
     const settings = await send({ type: 'GET_SETTINGS' });
     if (!keyDirty) $('#api-key').value = settings.key || '';
-    syncState = settings.sync || {}; renderKey(); renderSync();
+    syncState = settings.sync || {}; webdavState = settings.webdav || {};
+    provider = settings.provider || 'google'; $('#sync-provider').value = provider;
+    if (!webdavDirty) {
+      $('#webdav-url').value = webdavState.url || ''; $('#webdav-username').value = webdavState.username || '';
+      $('#webdav-password').placeholder = webdavState.configured ? '已保存；留空沿用原密码' : '输入应用密码';
+    }
+    renderKey(); renderSync();
     $('#enabled').checked = state.enabled;
     render();
   }
@@ -119,25 +145,51 @@
     catch (e) { message(e.message, true); $('#enabled').checked = state.enabled; }
   });
   function renderSync() {
-    const parts = [syncState.configured === false ? 'Google 登录待应用配置' : syncState.supported === false ? 'Google 登录当前支持 Chrome' : syncState.connected ? 'Google Drive 已连接' : '使用 Google 登录后可同步词本'];
-    if (syncState.lastSync) parts.push(`上次同步：${new Date(syncState.lastSync).toLocaleString()}`);
-    if (syncState.dirty) parts.push('有本地变更待同步');
-    $('#sync-status').textContent = syncBusy ? '正在读取、合并并保存词本…' : parts.join(' · ');
-    $('#drive-sync').disabled = syncBusy || !syncState.connected;
-    $('#drive-connect').disabled = syncBusy || syncState.configured === false || syncState.supported === false; $('#drive-connect').textContent = syncState.connected ? '重新登录 Google' : '使用 Google 登录';
-    $('#drive-disconnect').hidden = !syncState.connected; $('#drive-disconnect').disabled = syncBusy;
+    const dav = provider === 'webdav', current = dav ? webdavState : syncState;
+    $('#webdav-fields').hidden = !dav;
+    const parts = [dav ? current.connected ? 'WebDAV 已连接' : current.configured ? '请重新保存连接并允许地址访问' : '填写 WebDAV 地址与应用密码后保存连接' : current.configured === false ? 'Google 登录待应用配置' : current.supported === false ? 'Google 登录当前支持 Chrome' : current.connected ? 'Google Drive 已连接' : '使用 Google 登录后可同步词本'];
+    if (current.lastSync) parts.push('上次同步：' + new Date(current.lastSync).toLocaleString());
+    if (current.dirty) parts.push('有本地变更待同步');
+    $('#sync-status').textContent = syncBusy ? '正在处理连接或读取、合并并保存词本…' : parts.join(' · ');
+    $('#drive-sync').disabled = syncBusy || !current.connected || (dav && webdavDirty);
+    $('#drive-connect').hidden = dav; $('#drive-disconnect').hidden = dav || !syncState.connected;
+    $('#drive-connect').disabled = syncBusy || syncState.configured === false || syncState.supported === false;
+    $('#drive-connect').textContent = syncState.connected ? '重新登录 Google' : '使用 Google 登录';
+    for (const id of ['sync-provider', 'drive-disconnect', 'webdav-url', 'webdav-username', 'webdav-password', 'webdav-connect', 'webdav-disconnect']) $('#' + id).disabled = syncBusy;
+    $('#webdav-disconnect').hidden = !webdavState.configured;
   }
-  async function syncAction(type) {
+  async function syncAction(type, fields = {}) {
     syncBusy = true; renderSync();
     try {
-      const result = await send({ type }); syncState = result;
-      await refresh(); message(type === 'DRIVE_SYNC' ? `词本已同步，共 ${result.words.toLocaleString()} 个词。` : type === 'DRIVE_CONNECT' ? 'Google Drive 已连接，可点击立即同步。' : '本机已断开 Google Drive 连接。');
+      const result = await send({ type, ...fields });
+      if (type.startsWith('WEBDAV_')) {
+        webdavDirty = false; $('#webdav-password').value = '';
+      }
+      await refresh();
+      message(type.endsWith('_SYNC') ? '词本已同步，共 ' + result.words.toLocaleString() + ' 个词。' : type.endsWith('_CONNECT') ? '连接已保存，可点击立即同步。' : type === 'SYNC_PROVIDER' ? '同步方式已保存。' : '本机连接已清除，云端词本继续保留。');
     } catch (e) { message(e.message, true); }
     finally { syncBusy = false; renderSync(); }
   }
+  $('#sync-provider').addEventListener('change', () => syncAction('SYNC_PROVIDER', { provider: $('#sync-provider').value }));
   $('#drive-connect').addEventListener('click', () => syncAction('DRIVE_CONNECT'));
-  $('#drive-sync').addEventListener('click', () => syncAction('DRIVE_SYNC'));
+  $('#drive-sync').addEventListener('click', () => syncAction(provider === 'webdav' ? 'WEBDAV_SYNC' : 'DRIVE_SYNC'));
   $('#drive-disconnect').addEventListener('click', () => syncAction('DRIVE_DISCONNECT'));
+  for (const id of ['webdav-url', 'webdav-username', 'webdav-password']) $('#' + id).addEventListener('input', () => { webdavDirty = true; renderSync(); });
+  $('#webdav-connect').addEventListener('click', async () => {
+    let fields, permission;
+    try {
+      fields = { url: LexiTrailWebDAV.endpoint($('#webdav-url').value.trim()), username: $('#webdav-username').value, password: $('#webdav-password').value };
+      // Call request during the click gesture, before any asynchronous work.
+      permission = chrome.permissions.request({ origins: [LexiTrailWebDAV.originPermission(fields.url)] });
+    } catch { message('请填写有效的 HTTPS WebDAV 地址。', true); return; }
+    syncBusy = true; renderSync();
+    try {
+      if (!await permission) throw Error('请允许访问此 WebDAV 地址后再保存连接。');
+      await syncAction('WEBDAV_CONNECT', fields);
+    } catch (e) { message(e.message, true); }
+    finally { syncBusy = false; renderSync(); }
+  });
+  $('#webdav-disconnect').addEventListener('click', () => syncAction('WEBDAV_DISCONNECT'));
   $('#export-backup').addEventListener('click', async () => {
     const button = $('#export-backup'); button.disabled = true;
     try {
