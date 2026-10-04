@@ -38,5 +38,11 @@
       "run_at": "document_idle"
     }
   ],
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA14iXWfBlgvbcD5kvLR4OQBNUKX1Vmqu8BeDzddxPhnZT7hXKo9XrIDGzBsv7FfT8/Mv1MXBpFsDPXCKA5fHWhOmwQcJCykcULB55xRadCrdJje4PKv2xbZwzcUGiSHL9wLP6PDzs/f0mlwmsHgShGgSL4Vhpc5015NUMQsVu4KTrVy/IGybV8Cq6/i6fXXYQrHsGrF0Zgh7/BnZXhYsdz1UuwXxzrdt18SmrKur4rcPp4bMPzP1kA1xFxW6J+4W6bElI+F/EWX/wSPaicxkZW0l5ILu0nLktO38vuSf3S9P4be5h03NuNenWwafoFaY/QgqiigF0VpcIf041xOGzTQIDAQAB"
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA14iXWfBlgvbcD5kvLR4OQBNUKX1Vmqu8BeDzddxPhnZT7hXKo9XrIDGzBsv7FfT8/Mv1MXBpFsDPXCKA5fHWhOmwQcJCykcULB55xRadCrdJje4PKv2xbZwzcUGiSHL9wLP6PDzs/f0mlwmsHgShGgSL4Vhpc5015NUMQsVu4KTrVy/IGybV8Cq6/i6fXXYQrHsGrF0Zgh7/BnZXhYsdz1UuwXxzrdt18SmrKur4rcPp4bMPzP1kA1xFxW6J+4W6bElI+F/EWX/wSPaicxkZW0l5ILu0nLktO38vuSf3S9P4be5h03NuNenWwafoFaY/QgqiigF0VpcIf041xOGzTQIDAQAB",
+  "oauth2": {
+    "client_id": "323945631645-0nto05j21h67bqfh3e6jsl1rng6mhuj7.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.appdata"
+    ]
+  }
 }

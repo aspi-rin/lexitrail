@@ -6,13 +6,15 @@ LexiTrail 使用 Google Drive 应用数据区保存每台设备的 JSON 快照�
 
 ## 用户操作
 
-应用完成下文的一次登记并构建后，设置页只需点击 **使用 Google 登录**，授权应用数据权限，再点击 **立即同步**。第二台电脑安装同一包、使用同一 Google 账号登录，再同步即可。设置页显示连接情况、上次同步时间和待同步变化。
+当前标准安装包已完成应用登记，设置页只需点击 **使用 Google 登录**，授权应用数据权限，再点击 **立即同步**。第二台电脑安装同一包、使用同一 Google 账号登录，再同步即可。设置页显示连接情况、上次同步时间和待同步变化。
 
 Google 登录当前面向 Chrome；阅读与本地词本功能支持 Chrome / Edge 140+。登录使用当前 Chrome 资料中的 Google 账号。需要换账号时，使用相应 Chrome 资料。断开连接清除本机缓存令牌和连接状态；云端快照继续保留，账号授权可从 Google 账号的第三方应用管理中撤销。
 
 ## 开发者一次登记
 
-当前已创建独立项目 **LexiTrail**，项目 ID `mercurial-song-510623-e1`。应用登记停留在 Google 用户数据政策确认页，Client ID 尚待创建；现有发布代码会明确显示“Google 登录待应用配置”。
+2026-10-04 已完成独立项目 **LexiTrail**（项目 ID `mercurial-song-510623-e1`）的一次登记。Google Drive API 已启用，数据访问仅配置 `drive.appdata`；应用为 External / Testing，已加入项目所有者当前 Google 账号作为唯一测试用户。公开 Chrome Client ID 已写入 manifest：`323945631645-0nto05j21h67bqfh3e6jsl1rng6mhuj7.apps.googleusercontent.com`。
+
+Google 提示配置生效可能需要 5 分钟到几小时；刚构建后出现客户端错误可稍后重试。测试模式下其他账号需由项目所有者加入测试用户列表。以下步骤供后续维护或重新登记使用：
 
 1. 打开 [LexiTrail Google Auth Platform](https://console.cloud.google.com/auth/overview?project=mercurial-song-510623-e1)。应用名称填 LexiTrail，用户支持和联系邮箱使用项目所有者邮箱；受众选择 External / 外部，个人开发保持 Testing / 测试。
 2. 阅读并确认 **Google API 服务：用户数据政策**，完成应用登记。
@@ -50,4 +52,4 @@ Client ID 和 manifest `key` 均为公开应用标识，可以随源码与安装
 
 ## 验证边界
 
-原生 OAuth 响应、授权过期、Drive 分页/读写、数据合并与并发本地编辑已使用模拟服务测试。实际 Google 登录和双设备云端往返需登记真实 Client ID 并在扩展中验收。开发夹具标注模拟服务，真实账号尚无本轮词本上传。
+原生 OAuth 响应、授权过期、Drive 分页/读写、数据合并与并发本地编辑已使用模拟服务测试。真实 Client ID 和 Cloud 配置已登记并在控制台核对；实际 Google 登录和双设备云端往返需在加载后的扩展中验收。开发夹具标注模拟服务，真实账号尚无本轮词本上传。

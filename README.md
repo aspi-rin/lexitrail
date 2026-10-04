@@ -34,7 +34,7 @@
 
 ## Google Drive 同步
 
-在设置页连接 Google Drive 后，点击“立即同步”合并各设备词本、释义、例句和阅读标注设置。方案采用应用专用 JSON 快照，数据由插件直接访问。应用开发者在 Google Cloud 统一登记公开 OAuth Client ID 并写入 manifest，用户点击“使用 Google 登录”即可授权。当前应用登记等待 Google 条款确认，Client ID 尚待创建。Google 原生登录当前支持 Chrome；完整步骤与规则见 [docs/SYNC.md](docs/SYNC.md)。DeepSeek Key 保留在每台设备本地。
+在设置页连接 Google Drive 后，点击“立即同步”合并各设备词本、释义、例句和阅读标注设置。方案采用应用专用 JSON 快照，数据由插件直接访问。应用开发者在 Google Cloud 统一登记公开 OAuth Client ID 并写入 manifest，用户点击“使用 Google 登录”即可授权。当前安装包已包含登记完成的 Client ID；应用处于测试模式，已添加项目所有者账号。新增账号需加入 Google Cloud 测试用户列表。Google 原生登录当前支持 Chrome；完整步骤与规则见 [docs/SYNC.md](docs/SYNC.md)。DeepSeek Key 保留在每台设备本地。
 
 ## 开发和验证
 

@@ -2,7 +2,7 @@
 
 ## 0.0.4 — 2026-10-04
 
-- Shared manifest OAuth configuration and native Chrome Google sign-in; real Client ID registration is pending the owner's Google terms confirmation.
+- Shared manifest OAuth configuration and native Chrome Google sign-in; the registered Chrome client is bundled, with Drive appdata enabled and the owner added as a test user.
 - Stable unpacked extension identity, credential-free vocabulary backup/import, and a legacy identity migration package.
 - Hover cards on marked English words, delayed lookup, card interaction without focus theft, and marked link click interception with an original-link action.
 - Stable ZIP directory for future manual upgrades.
