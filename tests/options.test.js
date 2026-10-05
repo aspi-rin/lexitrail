@@ -132,3 +132,52 @@ test('WebDAV permission is requested in click gesture, password clears after sav
   input.value = 'replacement'; input.dispatchEvent(new w.Event('input')); assert(w.document.querySelector('#drive-sync').disabled);
   dom.window.close();
 });
+
+test('WebDAV rejected credentials persist through page reload and sync remains available with a nearby error', async () => {
+  global.LexiTrail = require('../extension/core'); global.LexiTrailSync = require('../extension/sync');
+  const D = require('../extension/webdav'), local = {state:{initialized:true,enabled:true,levels:['A1'],words:{},revision:1}}, calls = [];
+  let response = () => new Response('private server body',{status:401});
+  const chrome = {permissions:{request:async()=>true,contains:async()=>true},storage:{local:{
+    get:async key=>({[key]:structuredClone(local[key])}),set:async data=>Object.assign(local,structuredClone(data))
+  },onChanged:{addListener:()=>{}}}};
+  let dav = D.create(chrome,(...args)=>response(...args));
+  chrome.runtime = {sendMessage:async m=>{
+    calls.push(m.type);
+    try {
+      let data;
+      if (m.type==='GET_LEVELS') data=[];
+      else if (m.type==='GET_STATE') data={state:local.state,hasKey:false};
+      else if (m.type==='GET_SETTINGS') data={provider:'webdav',webdav:await dav.status(),sync:{}};
+      else if (m.type==='WEBDAV_CONNECT') data=await dav.connect(m);
+      else if (m.type==='WEBDAV_SYNC') {await dav.load();await dav.save(local.state);data={words:0};}
+      return {ok:true,data};
+    } catch(e) {return {ok:false,error:e.message};}
+  }};
+  const open = async () => {
+    const dom = new JSDOM(fs.readFileSync(path.join(root,'options.html'),'utf8'),{url:'https://example.org/options.html',runScripts:'outside-only'});
+    dom.window.chrome=chrome;
+    for (const file of ['core.js','webdav.js','options.js']) dom.window.eval(fs.readFileSync(path.join(root,file),'utf8'));
+    await new Promise(r=>setTimeout(r,15)); dom.window.document.querySelector('[data-tab="settings"]').click();
+    return dom;
+  };
+  let dom=await open(), w=dom.window;
+  for (const [id,value] of [['webdav-url','https://dav.example/dav/'],['webdav-username','fixture-user'],['webdav-password','fixture-password']]) {
+    const input=w.document.querySelector('#'+id);input.value=value;input.dispatchEvent(new w.Event('input'));
+  }
+  w.document.querySelector('#webdav-connect').click();await new Promise(r=>setTimeout(r,20));
+  const feedback=w.document.querySelector('#sync-message');
+  assert(!feedback.hidden);assert(feedback.classList.contains('error'));assert.match(feedback.textContent,/已保存到本机.*验证失败/);
+  assert(!w.document.querySelector('#drive-sync').disabled);assert.equal(w.document.querySelector('#webdav-password').value,'');
+  dom.window.close(); dav=D.create(chrome,(...args)=>response(...args)); dom=await open();w=dom.window;
+  assert.equal(w.document.querySelector('#webdav-url').value,'https://dav.example/dav/');
+  assert.equal(w.document.querySelector('#webdav-username').value,'fixture-user');
+  assert(w.document.querySelector('#webdav-password').placeholder.includes('已保存'));
+  assert.match(w.document.querySelector('#sync-status').textContent,/已保存.*验证失败/);
+  const sync=w.document.querySelector('#drive-sync');assert(!sync.disabled);
+  sync.click();await new Promise(r=>setTimeout(r,20));assert.match(w.document.querySelector('#sync-message').textContent,/密码无效/);assert(!sync.disabled);
+  response=(url,opts)=>opts.method==='PROPFIND'?new Response(`<d:multistatus xmlns:d="DAV:"><d:response><d:href>${new URL(url).pathname}</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`,{status:207}):new Response(null,{status:204});
+  sync.click();await new Promise(r=>setTimeout(r,20));
+  assert.match(w.document.querySelector('#sync-message').textContent,/词本已同步/);assert(!w.document.querySelector('#sync-message').classList.contains('error'));
+  assert.match(w.document.querySelector('#sync-status').textContent,/已保存并验证/);assert.equal(calls.filter(t=>t==='WEBDAV_SYNC').length,2);
+  dom.window.close();
+});

@@ -5,7 +5,7 @@
 ## WebDAV 操作
 
 1. 在提供商账户开启应用连接，取得 HTTPS WebDAV 文件夹地址、连接账号和应用密码。InfiniCLOUD 对应 WebDAV Connection URL、Connection ID 和 Apps Password。[提供商说明](https://infini-cloud.net/en/support_account_login-settings_apps.html)
-2. 在设置页选择 **WebDAV**，填写三个字段，点击 **验证并保存连接**。浏览器只为该地址申请可选主机权限；服务器需支持 Basic 认证与 PROPFIND、MKCOL、GET、PUT。验证只读取指定文件夹属性。[Chrome 可选权限](https://developer.chrome.com/docs/extensions/reference/api/permissions#method-request)、[WebDAV 标准](https://www.rfc-editor.org/rfc/rfc4918.html)
+2. 在设置页选择 **WebDAV**，填写三个字段，点击 **保存并验证连接**。浏览器只为该地址申请可选主机权限；服务器需支持 Basic 认证与 PROPFIND、MKCOL、GET、PUT。填写有效信息并允许地址访问后，先保存本机连接，再读取服务器文件夹属性验证。验证失败也保留连接，并显示具体原因，刷新后可修改应用密码或点击同步重试。[Chrome 可选权限](https://developer.chrome.com/docs/extensions/reference/api/permissions#method-request)、[WebDAV 标准](https://www.rfc-editor.org/rfc/rfc4918.html)
 3. 点击 **立即同步**。首次同步创建指定目录的 `LexiTrail/` 子文件夹；每台设备保存自己的 `lexitrail-device-<id>.json`。其他设备填写同一地址与账号并分别同步，A→B→A 可以让两台设备获取最新合并结果。
 4. 密码保存后输入框清空，留空保存可沿用同一地址与账号的原密码。修改地址或账号时需要填写密码。**清除本机连接** 删除保存的地址、账号与密码，云端文件继续保留。
 
@@ -67,6 +67,6 @@ Client ID 和 manifest `key` 均为公开应用标识，可以随源码与安装
 
 ## 验证边界
 
-0.0.5 的 WebDAV 连接/独立快照读写、两客户端合并、地址权限、凭据清除、异常 XML/JSON 和并发本地编辑通过模拟服务测试。提供商真实连接本轮由生产模块与独立 HTTP 客户端各尝试一次，均返回 401；临时凭据已清理，服务器未创建测试目录，真实往返需有效应用凭据后补验。设置页两种配色与模拟 WebDAV 保存/同步已在 Chrome 本地测试页验证。
+0.0.6 的 WebDAV 连接/独立快照读写、两客户端合并、地址权限、凭据清除、异常 XML/JSON 和并发本地编辑通过模拟服务测试。提供商真实连接本轮由生产模块与独立 HTTP 客户端各尝试一次，均返回 401；临时凭据已清理，服务器未创建测试目录，真实往返需有效应用凭据后补验。设置页两种配色与模拟 WebDAV 保存/同步已在 Chrome 本地测试页验证。0.0.6 增加认证失败后仍保存、刷新恢复与按钮旁反馈的完整页面回归测试；保存仅表示本机配置持久化，服务器验证结果和真实同步成功分别显示。
 
 原生 OAuth 响应、授权过期、Drive 分页/读写、数据合并与并发本地编辑已使用模拟服务测试。真实 Client ID 和 Cloud 配置已登记并在控制台核对；实际 Google 登录和双设备云端往返需在加载后的扩展中验收。开发夹具标注模拟服务，真实账号尚无本轮词本上传。

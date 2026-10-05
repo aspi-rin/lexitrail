@@ -147,9 +147,17 @@
   function renderSync() {
     const dav = provider === 'webdav', current = dav ? webdavState : syncState;
     $('#webdav-fields').hidden = !dav;
-    const parts = [dav ? current.connected ? 'WebDAV 已连接' : current.configured ? '请重新保存连接并允许地址访问' : '填写 WebDAV 地址与应用密码后保存连接' : current.configured === false ? 'Google 登录待应用配置' : current.supported === false ? 'Google 登录当前支持 Chrome' : current.connected ? 'Google Drive 已连接' : '使用 Google 登录后可同步词本'];
+    let summary;
+    if (dav) {
+      if (!current.configured) summary = '填写 WebDAV 地址与应用密码后保存连接';
+      else if (!current.connected) summary = '连接已保存，请重新保存并允许地址访问';
+      else if (current.validationError) summary = 'WebDAV 连接已保存 · 验证失败：' + current.validationError;
+      else summary = current.verified ? 'WebDAV 连接已保存并验证' : 'WebDAV 连接已保存，可点击立即同步';
+    } else summary = current.configured === false ? 'Google 登录待应用配置' : current.supported === false ? 'Google 登录当前支持 Chrome' : current.connected ? 'Google Drive 已连接' : '使用 Google 登录后可同步词本';
+    const parts = [summary];
     if (current.lastSync) parts.push('上次同步：' + new Date(current.lastSync).toLocaleString());
     if (current.dirty) parts.push('有本地变更待同步');
+    if (dav && webdavDirty) parts.push('连接已修改，请先保存再同步');
     $('#sync-status').textContent = syncBusy ? '正在处理连接或读取、合并并保存词本…' : parts.join(' · ');
     $('#drive-sync').disabled = syncBusy || !current.connected || (dav && webdavDirty);
     $('#drive-connect').hidden = dav; $('#drive-disconnect').hidden = dav || !syncState.connected;
@@ -158,16 +166,19 @@
     for (const id of ['sync-provider', 'drive-disconnect', 'webdav-url', 'webdav-username', 'webdav-password', 'webdav-connect', 'webdav-disconnect']) $('#' + id).disabled = syncBusy;
     $('#webdav-disconnect').hidden = !webdavState.configured;
   }
+  function syncFeedback(text, error = false) {
+    const node = $('#sync-message'); node.textContent = text; node.hidden = !text; node.classList.toggle('error', error);
+  }
   async function syncAction(type, fields = {}) {
-    syncBusy = true; renderSync();
+    syncFeedback(''); syncBusy = true; renderSync();
     try {
       const result = await send({ type, ...fields });
       if (type.startsWith('WEBDAV_')) {
         webdavDirty = false; $('#webdav-password').value = '';
       }
       await refresh();
-      message(type.endsWith('_SYNC') ? '词本已同步，共 ' + result.words.toLocaleString() + ' 个词。' : type.endsWith('_CONNECT') ? '连接已保存，可点击立即同步。' : type === 'SYNC_PROVIDER' ? '同步方式已保存。' : '本机连接已清除，云端词本继续保留。');
-    } catch (e) { message(e.message, true); }
+      syncFeedback(result.validationError ? '连接已保存到本机，验证失败：' + result.validationError : type.endsWith('_SYNC') ? '词本已同步，共 ' + result.words.toLocaleString() + ' 个词。' : type.endsWith('_CONNECT') ? '连接已保存并验证，可点击立即同步。' : type === 'SYNC_PROVIDER' ? '同步方式已保存。' : '本机连接已清除，云端词本继续保留。', Boolean(result.validationError));
+    } catch (e) { syncFeedback(e.message, true); }
     finally { syncBusy = false; renderSync(); }
   }
   $('#sync-provider').addEventListener('change', () => syncAction('SYNC_PROVIDER', { provider: $('#sync-provider').value }));
@@ -177,16 +188,17 @@
   for (const id of ['webdav-url', 'webdav-username', 'webdav-password']) $('#' + id).addEventListener('input', () => { webdavDirty = true; renderSync(); });
   $('#webdav-connect').addEventListener('click', async () => {
     let fields, permission;
+    syncFeedback('');
     try {
       fields = { url: LexiTrailWebDAV.endpoint($('#webdav-url').value.trim()), username: $('#webdav-username').value, password: $('#webdav-password').value };
       // Call request during the click gesture, before any asynchronous work.
       permission = chrome.permissions.request({ origins: [LexiTrailWebDAV.originPermission(fields.url)] });
-    } catch { message('请填写有效的 HTTPS WebDAV 地址。', true); return; }
+    } catch { syncFeedback('请填写有效的 HTTPS WebDAV 地址。', true); return; }
     syncBusy = true; renderSync();
     try {
       if (!await permission) throw Error('请允许访问此 WebDAV 地址后再保存连接。');
       await syncAction('WEBDAV_CONNECT', fields);
-    } catch (e) { message(e.message, true); }
+    } catch (e) { syncFeedback(e.message, true); }
     finally { syncBusy = false; renderSync(); }
   });
   $('#webdav-disconnect').addEventListener('click', () => syncAction('WEBDAV_DISCONNECT'));

@@ -89,6 +89,7 @@
       const current = await config(), local = (await chrome.storage.local.get('state')).state;
       return { configured: Boolean(current.password), connected: Boolean(current.password && await allowed(current.url)),
         url: current.url ?? '', username: current.username ?? '', lastSync: current.lastSync ?? 0,
+        verified: !current.validationError && Boolean(current.verifiedAt ?? current.lastSync), validationError: current.validationError ?? '',
         dirty: Boolean(local && (local.revision ?? 0) > (current.lastSyncRevision ?? -1)) };
     }
     async function connect(input) {
@@ -99,11 +100,17 @@
       if (!await allowed(url)) throw Error('请允许访问此 WebDAV 地址后再保存连接。');
       const same = old.url === url && old.username === username;
       const current = { url, username, password, deviceId: old.deviceId ?? crypto.randomUUID(), lastSync: same ? old.lastSync ?? 0 : 0, lastSyncRevision: same ? old.lastSyncRevision ?? -1 : -1 };
-      // Validate credentials before replacing a working local connection.
-      const response = await http(current, url, { method: 'PROPFIND', headers: { Depth: '0', 'Content-Type': 'application/xml; charset=utf-8' }, body: PROP });
-      if (response.status !== 207) throw Error('此地址未返回 WebDAV 文件夹，请检查路径。');
-      const doc = parseXML(await body(response));
-      if (doc.namespace !== 'DAV:' || doc.name !== 'multistatus' || !children(doc, 'response').some(node => children(node, 'propstat').some(prop => children(prop, 'status').some(s => /^HTTP\/\S+\s+200(?:\s|$)/.test(s.text.trim())) && children(prop, 'prop').some(p => children(p, 'resourcetype').some(t => children(t, 'collection').length))))) throw Error('请填写 WebDAV 文件夹地址。');
+      // Persist the explicit save independently of network validation. A server
+      // failure must leave a durable connection the user can correct or retry.
+      current.verifiedAt = 0; current.validationError = '';
+      await chrome.storage.local.set({ webdavConfig: current });
+      try {
+        const response = await http(current, url, { method: 'PROPFIND', headers: { Depth: '0', 'Content-Type': 'application/xml; charset=utf-8' }, body: PROP });
+        if (response.status !== 207) throw Error('此地址未返回 WebDAV 文件夹，请检查路径。');
+        const doc = parseXML(await body(response));
+        if (doc.namespace !== 'DAV:' || doc.name !== 'multistatus' || !children(doc, 'response').some(node => children(node, 'propstat').some(prop => children(prop, 'status').some(s => /^HTTP\/\S+\s+200(?:\s|$)/.test(s.text.trim())) && children(prop, 'prop').some(p => children(p, 'resourcetype').some(t => children(t, 'collection').length))))) throw Error('请填写 WebDAV 文件夹地址。');
+        current.verifiedAt = Date.now();
+      } catch (error) { current.validationError = error.message; }
       await chrome.storage.local.set({ webdavConfig: current }); return status();
     }
     async function disconnect() {
@@ -167,7 +174,7 @@
       const response = await http(current, url, { method: 'PUT', headers: { 'Content-Type': 'application/json; charset=utf-8' }, body: payload });
       if (![200, 201, 204].includes(response.status)) throw Error('WebDAV 未确认快照保存，请重试同步。');
       await response.body?.cancel();
-      await chrome.storage.local.set({ webdavConfig: { ...current, lastSync: Date.now(), lastSyncRevision: state.revision ?? 0 } });
+      await chrome.storage.local.set({ webdavConfig: { ...current, verifiedAt: Date.now(), validationError: '', lastSync: Date.now(), lastSyncRevision: state.revision ?? 0 } });
     }
     return { status, connect, disconnect, load, save };
   }

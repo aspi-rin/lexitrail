@@ -32,6 +32,7 @@ Object.assign(vm.runInContext('drive', backend.context), backend.context.LexiTra
 const davFiles = new Map(); let davFolder = false;
 const davRequest = async (url, options) => {
   const pathname = new URL(url).pathname;
+  if (atob(options.headers.Authorization.slice(6)).startsWith('rejected-fixture:')) return new Response(null, {status:401});
   if (options.method === 'MKCOL') { davFolder = true; return new Response(null, { status: 201 }); }
   if (options.method === 'PUT') { davFiles.set(pathname, options.body); return new Response(null, { status: 204 }); }
   if (options.method === 'PROPFIND') {

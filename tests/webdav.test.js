@@ -7,7 +7,7 @@ const item = (href, collection = false, status = 200) => `<d:response><d:href>${
 const listing = entries => new Response(`<d:multistatus xmlns:d="DAV:">${entries.join('')}</d:multistatus>`, { status: 207 });
 function fixture() {
   const local = {}, calls = []; let permission = true;
-  const chrome = { storage: { local: { get: async key => ({ [key]: local[key] }), set: async data => Object.assign(local, data) } }, permissions: { contains: async () => permission } };
+  const chrome = { storage: { local: { get: async key => ({ [key]: structuredClone(local[key]) }), set: async data => Object.assign(local, structuredClone(data)) } }, permissions: { contains: async () => permission } };
   let response = (url, options) => options.method === 'PROPFIND' ? listing([item(new URL(url).pathname, true)]) : new Response(null, { status: 201 });
   const dav = D.create(chrome, async (url, options) => { calls.push({ url, options }); return response(url, options); });
   const connect = () => dav.connect({ url: 'https://dav.example/dav/', username: 'fixture-user', password: 'fixture-password' });
@@ -21,10 +21,10 @@ test('WebDAV validation requires HTTPS, explicit address permission and valid se
   await f.connect(); assert((await f.dav.status()).connected);
   assert(!JSON.stringify(await f.dav.status()).includes('fixture-password'));
   for (const { options } of f.calls) { assert.equal(options.redirect, 'error'); assert.equal(options.credentials, 'omit'); assert.equal(options.referrerPolicy, 'no-referrer'); assert(options.signal); }
-  const original = structuredClone(f.local.webdavConfig);
   f.respond(() => new Response('private body', { status: 401 }));
-  await assert.rejects(f.dav.connect({ url: 'https://other.example/', username: 'new', password: 'new-password' }), /密码无效/);
-  assert.deepEqual(f.local.webdavConfig, original);
+  const failed = await f.dav.connect({ url: 'https://other.example/', username: 'new', password: 'new-password' });
+  assert.match(failed.validationError, /密码无效/); assert.equal(failed.verified, false);
+  assert.equal(f.local.webdavConfig.url, 'https://other.example/');
 });
 test('password stays local, empty password preserves same account, clearing connection removes credentials and preserves device identity', async () => {
   const f = fixture(); await f.connect(); const id = f.local.webdavConfig.deviceId;
@@ -112,4 +112,34 @@ test('two independent clients converge through per-device PUT snapshots and a th
   await sync(left,alpha); const second = await sync(right,beta), third = await sync(left,alpha);
   assert.deepEqual(Object.keys(second.words).sort(),['alpha','beta']); assert.deepEqual(third.words,second.words);
   assert.equal(stored.size,2); assert([...stored.values()].every(value=>!value.includes('fixture-password')));
+});
+
+test('failed validation survives a fresh client, exposes a retryable saved state and recovers after sync', async () => {
+  const f = fixture();
+  f.respond(() => new Response('private response', {status:401}));
+  const saved = await f.connect();
+  assert(saved.configured && saved.connected); assert.equal(saved.verified,false);
+  assert.match(saved.validationError,/密码无效/); assert(!JSON.stringify(saved).includes('private response'));
+  const reopened = D.create(f.chrome, async (url,options) => options.method === 'PROPFIND' ? listing([item(new URL(url).pathname,true)]) : new Response(null,{status:204}));
+  assert.deepEqual(await reopened.status(),saved);
+  assert.deepEqual(await reopened.load(),[]);
+  await reopened.save(global.LexiTrail.emptyState());
+  const recovered = await reopened.status(); assert(recovered.verified); assert.equal(recovered.validationError,''); assert(recovered.lastSync);
+});
+test('explicit connection save is durable while network validation waits and invalid input preserves it', async () => {
+  const f = fixture(); let finish, started;
+  const began = new Promise(resolve => started = resolve);
+  f.respond(() => { started(); return new Promise(resolve => finish = resolve); });
+  const pending = f.connect(); await began;
+  const beforeReply = await D.create(f.chrome).status();
+  assert(beforeReply.configured && beforeReply.connected); assert.equal(beforeReply.verified,false);
+  assert.equal(beforeReply.url,'https://dav.example/dav/');
+  finish(new Response(null,{status:503})); assert.match((await pending).validationError,/503/);
+  const prior = structuredClone(f.local.webdavConfig);
+  await assert.rejects(f.dav.connect({url:'http://invalid.example/',username:'new',password:'invalid'}));
+  await assert.rejects(f.dav.connect({url:'https://dav.example/',username:'new',password:''}));
+  assert.deepEqual(f.local.webdavConfig,prior);
+  f.respond(() => { throw Error('private network details'); });
+  assert.match((await f.connect()).validationError,/网络/);
+  assert(!JSON.stringify(await f.dav.status()).includes('private network details'));
 });

@@ -10,3 +10,5 @@
 .key-eye svg{display:block;width:20px;height:20px}
 
 .header-actions{display:flex;align-items:center;gap:12px}.theme-toggle{display:grid;place-items:center;width:36px;height:36px;border:1px solid var(--line);border-radius:50%;background:var(--surface);color:var(--ink)}.theme-toggle:hover{background:var(--hover)}.theme-toggle svg{width:20px;height:20px}#sync-provider{display:block;margin:8px 0 18px;padding:9px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}#webdav-fields input{display:block;width:100%;margin:8px 0 15px;padding:11px 13px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}.settings-card input{color:var(--ink)}
+
+#sync-message{color:var(--blue);font-size:13px;margin:12px 0}#sync-message.error{color:var(--danger)}
