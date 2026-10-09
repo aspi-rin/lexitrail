@@ -10,7 +10,7 @@ fs.mkdirSync(path.join(root, 'dist'), { recursive: true });
 fs.rmSync(output, { recursive: true, force: true });
 fs.cpSync(path.join(root, 'extension'), output, { recursive: true });
 if (migration) {
-  const legacy = { ...manifest }; delete legacy.key; delete legacy.oauth2;
+  const legacy = { ...manifest }; delete legacy.key;
   fs.writeFileSync(path.join(output, 'manifest.json'), JSON.stringify(legacy, null, 2) + '\n');
 }
 for (const name of ['cefrj.csv', 'octanove.csv']) fs.rmSync(path.join(output, 'data', name));
@@ -20,4 +20,4 @@ fs.cpSync(path.join(root, 'docs'), path.join(output, 'docs'), { recursive: true 
 const archive = path.join(root, 'dist', `lexitrail-${version}${migration ? '-migration' : ''}.zip`);
 fs.rmSync(archive, { force: true });
 execFileSync('/usr/bin/zip', ['-qr', archive, path.basename(output)], { cwd: path.dirname(output) });
-console.log(`Unpacked: ${output}\nZIP: ${archive}\nGoogle: ${migration ? 'legacy backup bridge' : manifest.oauth2 ? 'configured' : 'pending app registration'}`);
+console.log(`Unpacked: ${output}\nZIP: ${archive}\nIdentity: ${migration ? 'legacy path-based ID (backup bridge)' : 'fixed extension ID'}`);

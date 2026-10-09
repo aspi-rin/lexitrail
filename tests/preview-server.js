@@ -12,22 +12,6 @@ backend.context.LexiTrailAPI.deepseek = async (term) => {
   if (term === 'quasar') return { meaning: '类星体', definition: 'A very bright, distant galactic nucleus.', partOfSpeech: 'noun', example: 'A quasar shines far beyond our galaxy.', exampleTranslation: '一颗类星体在我们银河系之外的远处闪耀。' };
   return { meaning: translations[term] || '测试释义', definition: 'Able to recover quickly after difficulty.', partOfSpeech: 'adjective', example: 'The resilient forest grows again after the storm.', exampleTranslation: '这片有韧性的森林在风暴后重新生长。' };
 };
-// Simulated Drive for browser UI checks; production OAuth/REST is unit-tested separately.
-const cloudFiles = new Map();
-const cloudRequest = async (url, options) => {
-  const parsed = new URL(url), id = parsed.pathname.split('/').at(-1);
-  let data;
-  if (options.method === 'POST') {
-    const boundary = options.headers['Content-Type'].split('boundary=')[1];
-    const sections = options.body.split('--' + boundary).filter(section => section.includes('Content-Type:'));
-    const values = sections.map(section => JSON.parse(section.slice(section.indexOf('\r\n\r\n') + 4).trim()));
-    const fileId = `fixture-${cloudFiles.size + 1}`; cloudFiles.set(fileId, { name: values[0].name, value: values[1] }); data = { id: fileId };
-  } else if (options.method === 'PATCH') { cloudFiles.get(id).value = JSON.parse(options.body); data = { id }; }
-  else if (parsed.searchParams.get('alt') === 'media') data = cloudFiles.get(id).value;
-  else data = { files: [...cloudFiles].map(([id, file]) => ({ id, name: file.name })) };
-  return new Response(JSON.stringify(data));
-};
-Object.assign(vm.runInContext('drive', backend.context), backend.context.LexiTrailDrive.create(backend.context.chrome, cloudRequest));
 // Simulated WebDAV implements only the dedicated app folder and device files.
 const davFiles = new Map(); let davFolder = false;
 const davRequest = async (url, options) => {
@@ -56,7 +40,7 @@ const stub = `(() => {
     sendMessage: async message => {
       if(message.type==='OPEN_OPTIONS'){location.href='/options.html';return {ok:true,data:{}};}
       const response = await fetch('/rpc',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message,settings:location.pathname==='/options.html'})}).then(r=>r.json());
-      if(['INITIALIZE','MARK_WORD','SAVE_SETTINGS','LOOKUP','DRIVE_CONNECT','DRIVE_DISCONNECT','DRIVE_SYNC','IMPORT_BACKUP','SYNC_PROVIDER','WEBDAV_CONNECT','WEBDAV_DISCONNECT','WEBDAV_SYNC'].includes(message.type) && response.ok){changed();channel.postMessage('changed');}
+      if(['INITIALIZE','MARK_WORD','SAVE_SETTINGS','LOOKUP','IMPORT_BACKUP','WEBDAV_CONNECT','WEBDAV_DISCONNECT','WEBDAV_SYNC'].includes(message.type) && response.ok){changed();channel.postMessage('changed');}
       return response;
     }
   }};
@@ -77,6 +61,6 @@ http.createServer(async (req, res) => {
   const file = path.resolve(root, '.' + (pathname === '/' ? '/options.html' : pathname));
   if (!file.startsWith(root + path.sep) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
   let data = fs.readFileSync(file);
-  if (file.endsWith('options.html')) data = data.toString().replace('<script src="options.js"', '<script src="fixture.js" defer></script><script src="options.js"').replace('<main>', '<main><p class="muted">浏览器测试页 · 模拟 LLM / Google Drive / WebDAV</p>');
+  if (file.endsWith('options.html')) data = data.toString().replace('<script src="options.js"', '<script src="fixture.js" defer></script><script src="options.js"').replace('<main>', '<main><p class="muted">浏览器测试页 · 模拟 LLM / WebDAV</p>');
   res.writeHead(200, { 'Content-Type': types[path.extname(file)] || 'text/plain', 'Cache-Control': 'no-store' }); res.end(data);
 }).listen(8781, '127.0.0.1', () => console.log('Browser fixture: http://127.0.0.1:8781/options.html'));

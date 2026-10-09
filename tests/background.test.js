@@ -118,20 +118,20 @@ test('an open card can enroll its displayed result after the worker has stopped 
 });
 test('settings/key/sync operations are restricted to the trusted options page', async () => {
   const w = worker({ deepseekKey: 'test credential' });
-  for (const type of ['GET_SETTINGS', 'DRIVE_CONNECT', 'DRIVE_DISCONNECT', 'DRIVE_SYNC']) assert.equal((await w.send({ type }, 'https://example.org')).ok, false);
+  for (const type of ['GET_SETTINGS', 'WEBDAV_CONNECT', 'WEBDAV_DISCONNECT', 'WEBDAV_SYNC']) assert.equal((await w.send({ type }, 'https://example.org')).ok, false);
   assert.equal((await w.send({ type: 'GET_SETTINGS' })).data.key, 'test credential');
   assert(!JSON.stringify((await w.send({ type: 'GET_STATE' })).data).includes('test credential'));
 });
 test('sync merges remote changes while local marks during upload remain pending without being lost', async () => {
   const w = worker(); await w.send({ type: 'INITIALIZE', levels: ['A1'] });
-  const d = vm.runInContext('drive', w.context), C = w.context.LexiTrail;
+  const d = vm.runInContext('webdav', w.context), C = w.context.LexiTrail;
   let finish, started; const begin = new Promise(r => started = r); let reads = 0;
   const remote = C.emptyState(); C.mark(remote, 'forest', 'mastered', {}, { text: 'Remote context.' }, 100);
   d.load = async () => { reads++; return [{ state: remote }]; };
-  d.save = async snapshot => { started(); await new Promise(r => finish = r); w.stored.driveConfig = { lastSyncRevision: snapshot.revision }; };
-  d.status = async () => ({ connected: true, dirty: w.stored.state.revision > (w.stored.driveConfig?.lastSyncRevision ?? -1) });
-  const sync = w.send({ type: 'DRIVE_SYNC' }); await begin;
-  const shared = w.send({ type: 'DRIVE_SYNC' });
+  d.save = async snapshot => { started(); await new Promise(r => finish = r); w.stored.webdavConfig = { lastSyncRevision: snapshot.revision }; };
+  d.status = async () => ({ connected: true, dirty: w.stored.state.revision > (w.stored.webdavConfig?.lastSyncRevision ?? -1) });
+  const sync = w.send({ type: 'WEBDAV_SYNC' }); await begin;
+  const shared = w.send({ type: 'WEBDAV_SYNC' });
   await w.send({ type: 'MARK_WORD', word: 'quasar', status: 'learning' });
   finish(); const result = await sync; assert(result.ok); assert(result.data.dirty);
   assert((await shared).ok); assert.equal(reads, 1);
@@ -139,13 +139,13 @@ test('sync merges remote changes while local marks during upload remain pending 
 });
 test('a malformed remote snapshot leaves the existing local wordbook intact', async () => {
   const w = worker(); await w.send({ type: 'INITIALIZE', levels: ['A1'] });
-  const original = JSON.stringify(w.stored.state), d = vm.runInContext('drive', w.context);
+  const original = JSON.stringify(w.stored.state), d = vm.runInContext('webdav', w.context);
   d.load = async () => [{ state: { words: { bad: { status: 'invalid' } } } }];
-  const result = await w.send({ type: 'DRIVE_SYNC' }); assert.equal(result.ok, false);
+  const result = await w.send({ type: 'WEBDAV_SYNC' }); assert.equal(result.ok, false);
   assert.equal(JSON.stringify(w.stored.state), original);
 });
 test('backups preserve saved learning material, merge local progress, and exclude credentials', async () => {
-  const source = worker({ deepseekKey: 'local credential', driveConfig: { clientId: 'private configuration' } });
+  const source = worker({ deepseekKey: 'local credential', webdavConfig: { url: 'https://fixture.example/', username: 'fixture-user', password: 'private configuration' } });
   await source.send({ type: 'INITIALIZE', levels: ['A1'] });
   source.context.LexiTrailAPI.deepseek = async () => generated;
   const result = (await source.send({ type: 'LOOKUP', word: 'quasar', context: 'Saved context.' })).data;
@@ -167,7 +167,7 @@ test('backups preserve saved learning material, merge local progress, and exclud
 });
 test('WebDAV config is settings-only and excluded from public state/backups; sync shares merge and keeps local edits pending', async () => {
   const w = worker({ webdavConfig: { url: 'https://fixture.example/', username: 'fixture-user', password: 'private-fixture' } });
-  for (const type of ['SYNC_PROVIDER', 'WEBDAV_CONNECT', 'WEBDAV_DISCONNECT', 'WEBDAV_SYNC']) assert.equal((await w.send({ type, provider: 'webdav' }, 'https://example.org')).ok, false);
+  for (const type of ['WEBDAV_CONNECT', 'WEBDAV_DISCONNECT', 'WEBDAV_SYNC']) assert.equal((await w.send({ type }, 'https://example.org')).ok, false);
   for (const type of ['GET_STATE', 'EXPORT_BACKUP', 'GET_SETTINGS']) assert(!JSON.stringify((await w.send({ type })).data).includes('private-fixture'));
   const d = vm.runInContext('webdav', w.context), C = w.context.LexiTrail;
   let start, finish; const began = new Promise(r => start = r);
@@ -176,19 +176,33 @@ test('WebDAV config is settings-only and excluded from public state/backups; syn
   d.save = async snapshot => { start(); await new Promise(r => finish = r); w.stored.webdavConfig.lastSyncRevision = snapshot.revision; };
   const sync = w.send({ type: 'WEBDAV_SYNC' }); await began;
   assert.equal((await w.send({ type: 'WEBDAV_DISCONNECT' })).ok, false);
-  assert.equal((await w.send({ type: 'SYNC_PROVIDER', provider: 'google' })).ok, false);
-  assert.equal((await w.send({ type: 'DRIVE_SYNC' })).ok, false);
+  assert.equal((await w.send({ type: 'WEBDAV_CONNECT' })).ok, false);
   await w.send({ type: 'MARK_WORD', word: 'quasar', status: 'learning' });
   finish(); const result = await sync;
   assert(result.ok); assert(result.data.dirty); assert.equal(w.stored.state.words.quasar.status, 'learning'); assert.equal(w.stored.state.words.forest.status, 'mastered');
 });
-test('concurrent connection validation locks provider changes and sync until it finishes', async () => {
+test('concurrent connection validation locks connection changes and sync until it finishes', async () => {
   const w = worker(), d = vm.runInContext('webdav', w.context);
   let start, finish; const began = new Promise(r => start = r);
   d.connect = async () => { start(); await new Promise(r => finish = r); return {}; };
   const connection = w.send({ type: 'WEBDAV_CONNECT' }); await began;
-  for (const type of ['WEBDAV_CONNECT', 'WEBDAV_SYNC', 'DRIVE_CONNECT', 'DRIVE_DISCONNECT', 'SYNC_PROVIDER']) assert.equal((await w.send({ type, provider: 'google' })).ok, false);
+  for (const type of ['WEBDAV_CONNECT', 'WEBDAV_SYNC', 'WEBDAV_DISCONNECT']) assert.equal((await w.send({ type })).ok, false);
   finish(); assert((await connection).ok);
-  assert((await w.send({ type: 'SYNC_PROVIDER', provider: 'webdav' })).ok);
-  assert.equal((await w.send({ type: 'GET_SETTINGS' })).data.provider, 'webdav');
+  d.disconnect = async () => ({ configured: false });
+  assert((await w.send({ type: 'WEBDAV_DISCONNECT' })).ok);
+});
+test('startup quietly removes only obsolete Google Drive keys; wordbook, WebDAV connection and settings stay intact', async () => {
+  const state = { schema: 2, initialized: true, enabled: false, enabledUpdated: 7, levels: ['A1'], revision: 3, words: {
+    apple: { word: 'apple', level: 'A1', status: 'learning', statusUpdated: 5, translation: '苹果', studySaved: true, examples: [{ text: 'Kept context.' }], created: 1, updated: 5 }
+  } };
+  const webdavConfig = { url: 'https://fixture.example/dav/', username: 'fixture-user', password: 'fixture-secret', deviceId: '00000000-0000-4000-8000-000000000002', lastSync: 9, lastSyncRevision: 2 };
+  const w = worker({ state, deepseekKey: 'fixture key', webdavConfig,
+    driveConfig: { clientId: 'fixture-client', connected: true, deviceId: '00000000-0000-4000-8000-000000000003', lastSync: 8, lastSyncRevision: 1 }, syncProvider: 'google' });
+  const settings = (await w.send({ type: 'GET_SETTINGS' })).data;
+  assert(!Object.hasOwn(w.stored, 'driveConfig')); assert(!Object.hasOwn(w.stored, 'syncProvider'));
+  assert.deepEqual(w.calls.filter(call => call.remove).map(call => call.remove), [['driveConfig', 'syncProvider']]);
+  assert.deepEqual(w.stored.state, state); assert.deepEqual(w.stored.webdavConfig, webdavConfig); assert.equal(w.stored.deepseekKey, 'fixture key');
+  assert.deepEqual(Object.keys(settings).sort(), ['key', 'webdav']); assert.equal(settings.webdav.url, webdavConfig.url);
+  for (const type of ['DRIVE_CONNECT', 'DRIVE_DISCONNECT', 'DRIVE_SYNC', 'SYNC_PROVIDER']) assert.equal((await w.send({ type, provider: 'google' })).error, '未知请求。');
+  const fresh = worker(); assert((await fresh.send({ type: 'GET_STATE' })).ok); assert.deepEqual(Object.keys(fresh.stored), []);
 });

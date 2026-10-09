@@ -25,4 +25,4 @@ Stored timestamps and normalized word IDs provide a compact starting point for f
 
 ## Synchronization clocks
 
-Explicit status changes add `statusUpdated`; seed entries have an implicit baseline of zero. `enabledUpdated` clocks the reading preference independently. Local `revision` and `driveConfig.lastSyncRevision` track edits that occur during upload; these device counters stay outside cloud snapshots. Per-device snapshots and merge rules are documented in [SYNC.md](SYNC.md).
+Explicit status changes add `statusUpdated`; seed entries have an implicit baseline of zero. `enabledUpdated` clocks the reading preference independently. Local `revision` and `webdavConfig.lastSyncRevision` track edits that occur during upload; these device counters stay outside cloud snapshots. Per-device snapshots and merge rules are documented in [SYNC.md](SYNC.md).

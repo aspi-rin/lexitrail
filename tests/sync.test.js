@@ -30,7 +30,7 @@ test('merge preserves first learned material and unions reading examples indepen
 });
 test('annotation preference has its own clock; unknown fields and credentials stay local', () => {
   const a = state(), b = state(); a.enabled = false; a.enabledUpdated = 100; b.enabledUpdated = 50;
-  a.deepseekKey = 'private value'; a.driveAuth = 'private token'; a.words.apple.secret = 'private';
+  a.deepseekKey = 'private value'; a.sessionToken = 'private token'; a.words.apple.secret = 'private';
   const clean = S.snapshot(S.merge(a, b), device);
   assert.equal(clean.state.enabled, false); assert(!JSON.stringify(clean).includes('private'));
   assert(!Object.hasOwn(clean.state, 'deepseekKey')); assert.equal(S.readSnapshot(clean).words.apple.word, 'apple');

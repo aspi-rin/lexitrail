@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.7 — 2026-10-10
+
+- Removed Google Drive sync ahead of a Chrome Web Store listing: no Google sign-in, OAuth client, `identity` permission or `googleapis.com` host access remain. WebDAV manual sync is the only cloud sync.
+- Settings show the WebDAV connection directly; the provider selector and Google sign-in buttons are gone.
+- On startup the worker quietly deletes only the obsolete `driveConfig` and `syncProvider` local keys; the wordbook, WebDAV connection, DeepSeek Key and other settings are kept.
+- The fixed extension `key` (ID `pabcjgpefkpmodichjomkgiflicagkec`) is unchanged; `npm run check` now verifies the ID and an explicit manifest permission list. The legacy migration bridge still drops only `key`.
+
 ## 0.0.5 — 2026-10-05
 
 - Optional HTTPS WebDAV manual sync, per-device snapshots in a dedicated LexiTrail folder, connection verification and local credential removal.

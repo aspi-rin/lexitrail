@@ -33,7 +33,7 @@ test('saved key reopens as a masked configured field, can be deleted, and return
   w.chrome = { runtime: { sendMessage: async m => {
     if (m.type === 'GET_LEVELS') return { ok: true, data: [] };
     if (m.type === 'GET_STATE') return { ok: true, data: { state, hasKey: Boolean(key) } };
-    if (m.type === 'GET_SETTINGS') return { ok: true, data: { key, sync: {} } };
+    if (m.type === 'GET_SETTINGS') return { ok: true, data: { key, webdav: {} } };
     if (m.type === 'SAVE_SETTINGS') { if (m.clearKey) key = ''; else if (m.key) key = m.key; return { ok: true, data: {} }; }
   } }, storage: { onChanged: { addListener: () => {} } } };
   w.eval(fs.readFileSync(path.join(root, 'core.js'), 'utf8')); w.eval(fs.readFileSync(path.join(root, 'options.js'), 'utf8'));
@@ -48,24 +48,6 @@ test('saved key reopens as a masked configured field, can be deleted, and return
   await new Promise(r => setTimeout(r, 10)); assert.equal(key, 'replacement credential'); assert.equal(input.type, 'password');
   assert(button.classList.contains('key-configured')); dom.window.close();
 });
-test('Google sign-in uses shared app configuration and pending registration keeps login disabled', async () => {
-  const dom = new JSDOM(fs.readFileSync(path.join(root, 'options.html'), 'utf8'), { url: 'https://example.org/options.html', runScripts: 'outside-only' });
-  const w = dom.window, state = { initialized: true, enabled: true, levels: [], words: {} }, calls = [];
-  let configured = false, connected = false, refresh;
-  w.chrome = { runtime: { sendMessage: async m => {
-    calls.push(m);
-    return { ok: true, data: m.type === 'GET_LEVELS' ? [] : m.type === 'GET_STATE' ? { state, hasKey: false } : m.type === 'GET_SETTINGS' ? { key: '', sync: { configured, supported: true, connected } } : (connected = true, { configured, connected }) };
-  } }, storage: { onChanged: { addListener: f => refresh = f } } };
-  w.eval(fs.readFileSync(path.join(root, 'core.js'), 'utf8')); w.eval(fs.readFileSync(path.join(root, 'options.js'), 'utf8'));
-  await new Promise(r => setTimeout(r, 10));
-  const button = w.document.querySelector('#drive-connect'); assert(button.disabled); assert.equal(w.document.querySelector('#drive-client'), null);
-  assert(w.document.querySelector('#sync-status').textContent.includes('待应用配置'));
-  configured = true; refresh({ state: {} }); await new Promise(r => setTimeout(r, 10)); assert(!button.disabled);
-  button.click(); await new Promise(r => setTimeout(r, 10));
-  const request = calls.find(m => m.type === 'DRIVE_CONNECT'); assert.deepEqual(Object.keys(request), ['type']);
-  assert(!w.document.querySelector('#drive-sync').disabled); assert(w.document.querySelector('#sync-status').textContent.includes('已连接'));
-  dom.window.close();
-});
 test('backup buttons download a JSON payload and read a selected file through the trusted worker', async () => {
   const dom = new JSDOM(fs.readFileSync(path.join(root, 'options.html'), 'utf8'), { url: 'https://example.org/options.html', runScripts: 'outside-only' });
   const w = dom.window, state = { initialized: true, enabled: true, levels: [], words: {} }, calls = [];
@@ -75,7 +57,7 @@ test('backup buttons download a JSON payload and read a selected file through th
   w.HTMLAnchorElement.prototype.click = function () { filename = this.download; };
   w.chrome = { runtime: { sendMessage: async m => {
     calls.push(m);
-    return { ok: true, data: m.type === 'GET_LEVELS' ? [] : m.type === 'GET_STATE' ? { state, hasKey: false } : m.type === 'GET_SETTINGS' ? { key: '', sync: {} } : m.type === 'EXPORT_BACKUP' ? backup : { count: 1 } };
+    return { ok: true, data: m.type === 'GET_LEVELS' ? [] : m.type === 'GET_STATE' ? { state, hasKey: false } : m.type === 'GET_SETTINGS' ? { key: '', webdav: {} } : m.type === 'EXPORT_BACKUP' ? backup : { count: 1 } };
   } }, storage: { onChanged: { addListener: () => {} } } };
   w.eval(fs.readFileSync(path.join(root, 'core.js'), 'utf8')); w.eval(fs.readFileSync(path.join(root, 'options.js'), 'utf8'));
   await new Promise(r => setTimeout(r, 10));
@@ -116,7 +98,7 @@ test('WebDAV permission is requested in click gesture, password clears after sav
     calls.push(m);
     if (m.type === 'GET_LEVELS') return { ok:true, data:[] };
     if (m.type === 'GET_STATE') return { ok:true, data:{state:{initialized:true,enabled:true,levels:[],words:{}}} };
-    if (m.type === 'GET_SETTINGS') return { ok:true, data:{provider:'webdav',webdav:{configured,connected:configured,url:configured?'https://dav.example/dav/':'',username:configured?'fixture-user':''}} };
+    if (m.type === 'GET_SETTINGS') return { ok:true, data:{webdav:{configured,connected:configured,url:configured?'https://dav.example/dav/':'',username:configured?'fixture-user':''}} };
     if (m.type === 'WEBDAV_CONNECT') configured = true;
     return { ok:true, data:{} };
   } }, storage: { onChanged: { addListener: () => {} } } };
@@ -128,8 +110,11 @@ test('WebDAV permission is requested in click gesture, password clears after sav
   await new Promise(r => setTimeout(r,10)); assert(!calls.some(m=>m.type==='WEBDAV_CONNECT'));
   allowed = true; button.click(); await new Promise(r => setTimeout(r,10));
   assert.equal(calls.find(m=>m.type==='WEBDAV_CONNECT').password,'fixture-password'); assert.equal(input.value,''); assert(input.placeholder.includes('已保存'));
-  assert(!w.document.querySelector('#drive-sync').disabled);
-  input.value = 'replacement'; input.dispatchEvent(new w.Event('input')); assert(w.document.querySelector('#drive-sync').disabled);
+  assert(!w.document.querySelector('#sync-now').disabled);
+  // WebDAV is the only cloud sync: fields are always visible and no provider choice or sign-in button remains.
+  assert(!w.document.querySelector('#webdav-fields').hidden); assert.equal(w.document.querySelector('#sync-provider'), null);
+  assert.deepEqual([...w.document.querySelectorAll('#settings button')].map(b => b.id).filter(id => /sync|webdav/.test(id)), ['webdav-connect', 'webdav-disconnect', 'sync-now']);
+  input.value = 'replacement'; input.dispatchEvent(new w.Event('input')); assert(w.document.querySelector('#sync-now').disabled);
   dom.window.close();
 });
 
@@ -147,7 +132,7 @@ test('WebDAV rejected credentials persist through page reload and sync remains a
       let data;
       if (m.type==='GET_LEVELS') data=[];
       else if (m.type==='GET_STATE') data={state:local.state,hasKey:false};
-      else if (m.type==='GET_SETTINGS') data={provider:'webdav',webdav:await dav.status(),sync:{}};
+      else if (m.type==='GET_SETTINGS') data={webdav:await dav.status()};
       else if (m.type==='WEBDAV_CONNECT') data=await dav.connect(m);
       else if (m.type==='WEBDAV_SYNC') {await dav.load();await dav.save(local.state);data={words:0};}
       return {ok:true,data};
@@ -167,13 +152,13 @@ test('WebDAV rejected credentials persist through page reload and sync remains a
   w.document.querySelector('#webdav-connect').click();await new Promise(r=>setTimeout(r,20));
   const feedback=w.document.querySelector('#sync-message');
   assert(!feedback.hidden);assert(feedback.classList.contains('error'));assert.match(feedback.textContent,/已保存到本机.*验证失败/);
-  assert(!w.document.querySelector('#drive-sync').disabled);assert.equal(w.document.querySelector('#webdav-password').value,'');
+  assert(!w.document.querySelector('#sync-now').disabled);assert.equal(w.document.querySelector('#webdav-password').value,'');
   dom.window.close(); dav=D.create(chrome,(...args)=>response(...args)); dom=await open();w=dom.window;
   assert.equal(w.document.querySelector('#webdav-url').value,'https://dav.example/dav/');
   assert.equal(w.document.querySelector('#webdav-username').value,'fixture-user');
   assert(w.document.querySelector('#webdav-password').placeholder.includes('已保存'));
   assert.match(w.document.querySelector('#sync-status').textContent,/已保存.*验证失败/);
-  const sync=w.document.querySelector('#drive-sync');assert(!sync.disabled);
+  const sync=w.document.querySelector('#sync-now');assert(!sync.disabled);
   sync.click();await new Promise(r=>setTimeout(r,20));assert.match(w.document.querySelector('#sync-message').textContent,/密码无效/);assert(!sync.disabled);
   response=(url,opts)=>opts.method==='PROPFIND'?new Response(`<d:multistatus xmlns:d="DAV:"><d:response><d:href>${new URL(url).pathname}</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>`,{status:207}):new Response(null,{status:204});
   sync.click();await new Promise(r=>setTimeout(r,20));
