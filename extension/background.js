@@ -35,6 +35,17 @@ const initialized = serialized(async () => {
   const translations = await translationsReady, current = await state();
   if (C.enrich(current, translations)) await chrome.storage.local.set({ state: current });
 });
+// Sites switched off from the toolbar popup, stored as a sorted hostname list
+// under its own local key so it never enters the wordbook, sync or backups.
+function siteName(value) {
+  if (typeof value !== 'string' || !value || value.length > 253) return '';
+  try { return new URL(`http://${value}`).hostname === value ? value : ''; } catch { return ''; }
+}
+async function disabledSites() {
+  await secured;
+  const value = (await chrome.storage.local.get('disabledSites')).disabledSites;
+  return Array.isArray(value) ? value : [];
+}
 function trusted(sender) {
   return sender.id === chrome.runtime.id && sender.url === chrome.runtime.getURL('options.html');
 }
@@ -77,8 +88,9 @@ async function handle(message, sender) {
   switch (message.type) {
     case 'GET_STATE': {
       await writes;
-      const current = await state();
-      return { state: current, hasKey: Boolean((await chrome.storage.local.get('deepseekKey')).deepseekKey), counts: C.counts(current) };
+      const current = await state(), site = siteName(message.site);
+      const siteDisabled = Boolean(site) && (await disabledSites()).includes(site);
+      return { state: current, hasKey: Boolean((await chrome.storage.local.get('deepseekKey')).deepseekKey), counts: C.counts(current), siteDisabled };
     }
     case 'GET_LEVELS': {
       return C.LEVELS.map(level => ({ level, count: Object.values(dict).filter(v => v === level).length }));
@@ -168,6 +180,19 @@ async function handle(message, sender) {
         if (Object.hasOwn(update, 'deepseekKey')) { cacheGeneration++; lookups.clear(); pendingLookups.clear(); }
         await notify();
         return { saved: true };
+      });
+    }
+    case 'SET_SITE_ENABLED': {
+      if (sender.url !== chrome.runtime.getURL('popup.html')) throw Error('请在工具栏弹窗中切换网站开关。');
+      const site = siteName(message.site);
+      if (!site) throw Error('当前页面不支持。');
+      const enabled = Boolean(message.enabled);
+      return serialized(async () => {
+        const sites = new Set(await disabledSites());
+        if (enabled) sites.delete(site); else sites.add(site);
+        await chrome.storage.local.set({ disabledSites: [...sites].sort() });
+        await notify();
+        return { site, siteDisabled: !enabled };
       });
     }
     case 'OPEN_OPTIONS': { await chrome.runtime.openOptionsPage(); return {}; }

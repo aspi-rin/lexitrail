@@ -1,6 +1,6 @@
 # Local vocabulary and lookup data — schema 2
 
-Persistent storage is `chrome.storage.local.state`; schema 1 wordbooks are upgraded on worker startup. Existing states, initialization bands and collected contexts remain intact. API keys live separately under `deepseekKey`, with trusted-context storage access; message responses omit the key.
+Persistent storage is `chrome.storage.local.state`; schema 1 wordbooks are upgraded on worker startup. Existing states, initialization bands and collected contexts remain intact. API keys live separately under `deepseekKey`, with trusted-context storage access; message responses omit the key. Sites switched off from the toolbar popup live in a separate local `disabledSites` key (sorted array of exact hostnames, e.g. `www.example.com`); only the popup can change it, and it is never part of the wordbook state, sync snapshots or backups.
 
 Each `state.words[normalizedWord]` record has:
 

@@ -206,3 +206,28 @@ test('startup quietly removes only obsolete Google Drive keys; wordbook, WebDAV 
   for (const type of ['DRIVE_CONNECT', 'DRIVE_DISCONNECT', 'DRIVE_SYNC', 'SYNC_PROVIDER']) assert.equal((await w.send({ type, provider: 'google' })).error, '未知请求。');
   const fresh = worker(); assert((await fresh.send({ type: 'GET_STATE' })).ok); assert.deepEqual(Object.keys(fresh.stored), []);
 });
+test('popup per-site switch persists hostnames locally, notifies tabs, and stays out of public state and backups', async () => {
+  const w = worker(), popup = 'chrome-extension://fixture/popup.html', notified = [];
+  w.context.chrome.tabs.sendMessage = async (id, message) => { notified.push(message.type); };
+  assert((await w.send({ type: 'INITIALIZE', levels: ['A1'] })).ok); notified.length = 0;
+  assert.equal((await w.send({ type: 'GET_STATE', site: 'www.example.com' }, 'https://www.example.com/a')).data.siteDisabled, false);
+  // Only the toolbar popup may change the list; malformed hostnames are refused.
+  assert.equal((await w.send({ type: 'SET_SITE_ENABLED', site: 'www.example.com', enabled: false }, 'https://www.example.com/a')).ok, false);
+  assert.equal((await w.send({ type: 'SET_SITE_ENABLED', site: 'www.example.com', enabled: false })).ok, false);
+  for (const site of ['', 'example.com/path', 'a b.com', 'user@example.com', 42])
+    assert.equal((await w.send({ type: 'SET_SITE_ENABLED', site, enabled: false }, popup)).ok, false);
+  const response = await w.send({ type: 'SET_SITE_ENABLED', site: 'www.example.com', enabled: false }, popup);
+  assert.equal(response.data.site, 'www.example.com'); assert.equal(response.data.siteDisabled, true);
+  assert.deepEqual(w.stored.disabledSites, ['www.example.com']); assert.deepEqual(notified, ['STATE_CHANGED']);
+  await w.send({ type: 'SET_SITE_ENABLED', site: 'docs.example.org', enabled: false }, popup);
+  assert.deepEqual(w.stored.disabledSites, ['docs.example.org', 'www.example.com']);
+  const restarted = worker(w.stored);
+  assert.equal((await restarted.send({ type: 'GET_STATE', site: 'www.example.com' }, 'https://www.example.com/a')).data.siteDisabled, true);
+  assert.equal((await restarted.send({ type: 'GET_STATE', site: 'example.com' }, 'https://example.com/')).data.siteDisabled, false);
+  assert.equal((await restarted.send({ type: 'GET_STATE' }, popup)).data.siteDisabled, false);
+  for (const type of ['GET_STATE', 'EXPORT_BACKUP']) assert(!JSON.stringify((await restarted.send({ type })).data).includes('example.'));
+  assert.equal(w.stored.state.disabledSites, undefined);
+  await restarted.send({ type: 'SET_SITE_ENABLED', site: 'www.example.com', enabled: true }, popup);
+  assert.deepEqual(restarted.stored.disabledSites, ['docs.example.org']);
+  assert.equal((await restarted.send({ type: 'GET_STATE', site: 'www.example.com' }, 'https://www.example.com/a')).data.siteDisabled, false);
+});

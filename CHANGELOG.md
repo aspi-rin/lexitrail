@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.0.8 — 2026-10-13
+
+- Toolbar popup gains a per-site switch (“此网站”) at the top right of the intro, showing the current hostname. Turning it off removes dashed underlines, bracket translations, the hover card and the **L** selection button on that site immediately and stops selection/hover handling; turning it back on rescans the page — no reload in either direction.
+- Disabled sites are stored by exact hostname in the local `disabledSites` key (sorted array). Pages on a disabled site check it before any marking work. The list stays out of the wordbook state, WebDAV snapshots and backups.
+- No new permissions: the popup asks the active tab's content script for its hostname via `tabs.sendMessage`, so browser pages, the new tab page and tabs opened before install/update show the switch disabled with “当前页面不支持”.
+- Only the toolbar popup may change the list; the worker validates hostnames and notifies open tabs.
+
 ## 0.0.7 — 2026-10-10
 
 - Removed Google Drive sync ahead of a Chrome Web Store listing: no Google sign-in, OAuth client, `identity` permission or `googleapis.com` host access remain. WebDAV manual sync is the only cloud sync.

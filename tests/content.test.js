@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { JSDOM } = require('jsdom');
 const fs = require('node:fs'), path = require('node:path');
 const root = path.join(__dirname, '../extension');
-async function fixture() {
+async function fixture({ siteDisabled = false } = {}) {
   const dom = new JSDOM('<!doctype html><title>Fixture</title><article><p id="reading">Apple grows in a forest. Quasar shines.</p><code id="code">apple forest</code><div contenteditable="true" id="edit">apple</div><a id="link" href="https://example.org">apple</a></article>', { url: 'https://example.org/article', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window, highlights = new Map(); let shadow, listener;
   const original = w.HTMLElement.prototype.attachShadow;
@@ -15,17 +15,17 @@ async function fixture() {
   const requests = [];
   let hitNode = null; w.document.caretPositionFromPoint = () => hitNode ? { offsetNode: hitNode, offset: 0 } : null;
   const current = { initialized: true, enabled: true, words: { apple: { word: 'apple', status: 'new', level: 'A1', translation: '苹果' }, forest: { word: 'forest', status: 'learning', level: 'A2', translation: '森林' } } };
-  let lookupResolve;
+  let lookupResolve; const site = { disabled: siteDisabled };
   w.chrome = { runtime: { onMessage: { addListener: f => listener = f }, sendMessage: async m => {
     requests.push(m);
-    if (m.type === 'GET_STATE') return { ok: true, data: { state: structuredClone(current) } };
+    if (m.type === 'GET_STATE') return { ok: true, data: { state: structuredClone(current), siteDisabled: site.disabled } };
     if (m.type === 'MARK_WORD') { const record = { word: m.word, status: m.status, examples: [m.example] }; current.words[m.word] = record; return { ok: true, data: record }; }
     if (m.type === 'LOOKUP') return new Promise(r => lookupResolve = r);
     return { ok: true, data: {} };
   } } };
   w.eval(fs.readFileSync(path.join(root, 'core.js'), 'utf8')); w.eval(fs.readFileSync(path.join(root, 'content.js'), 'utf8'));
   await new Promise(r => setTimeout(r, 260));
-  return { dom, w, shadow, highlights, current, listener, requests, point: node => { hitNode = node; }, resolve: data => lookupResolve({ ok: true, data }) };
+  return { dom, w, shadow, highlights, current, site, listener, requests, point: node => { hitNode = node; }, resolve: data => lookupResolve({ ok: true, data }) };
 }
 test('translations preserve text and selection, exclude editing/code, and restore on status changes', async () => {
   const f = await fixture(), paragraph = f.w.document.querySelector('#reading');
@@ -115,5 +115,56 @@ test('learning words hover too; marked link clicks open a pinned card while modi
   f.current.enabled = false; f.listener({ type: 'STATE_CHANGED' }); await new Promise(r => setTimeout(r, 260));
   f.point(anchor.firstChild); prevented = null;
   anchor.dispatchEvent(new f.w.MouseEvent('click', { bubbles: true, cancelable: true, clientX: 150, clientY: 110 })); assert.equal(prevented, false);
+  f.dom.window.close();
+});
+
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const same = (actual, expected) => assert.equal(JSON.stringify(actual), JSON.stringify(expected));
+function selectWord(f, word) {
+  const text = [...f.w.document.querySelectorAll('#reading, #reading *')].flatMap(el => [...el.childNodes]).find(n => n.nodeType === 3 && n.data.includes(word));
+  const start = text.data.indexOf(word), range = f.w.document.createRange();
+  range.setStart(text, start); range.setEnd(text, start + word.length);
+  f.w.getSelection().removeAllRanges(); f.w.getSelection().addRange(range);
+  f.w.document.dispatchEvent(new f.w.MouseEvent('mouseup', { bubbles: true }));
+}
+test('a site disabled from the popup is torn down immediately and restored without reload', async () => {
+  const f = await fixture(), paragraph = f.w.document.querySelector('#reading');
+  same(f.requests.find(m => m.type === 'GET_STATE'), { type: 'GET_STATE', site: 'example.org' });
+  let reply; f.listener({ type: 'GET_SITE' }, { id: 'fixture' }, value => { reply = value; });
+  same(reply, { site: 'example.org' });
+  selectWord(f, 'Quasar'); await wait(10);
+  assert.equal(f.shadow.querySelector('.trigger').style.display, 'block');
+  const apple = paragraph.querySelector('[data-lexitrail-translation]'); f.point(apple.firstChild);
+  apple.dispatchEvent(new f.w.MouseEvent('pointermove', { bubbles: true, clientX: 150, clientY: 110 })); await wait(340);
+  assert.equal(f.shadow.querySelector('.card').style.display, 'block');
+  f.site.disabled = true; f.listener({ type: 'STATE_CHANGED' }); await wait(20);
+  // No scan delay: marks, translations, card and selection button disappear at once.
+  assert.equal(f.w.document.querySelectorAll('[data-lexitrail-translation]').length, 0);
+  assert.equal(paragraph.textContent, 'Apple grows in a forest. Quasar shines.');
+  assert(!f.highlights.get('lexitrail-new')?.size); assert(!f.highlights.get('lexitrail-learning')?.size);
+  assert.equal(f.shadow.querySelector('.card').style.display, 'none'); assert.equal(f.shadow.querySelector('.trigger').style.display, 'none');
+  const lookups = f.requests.filter(m => m.type === 'LOOKUP').length;
+  selectWord(f, 'Quasar'); await wait(10); assert.equal(f.shadow.querySelector('.trigger').style.display, 'none');
+  f.point(paragraph.firstChild);
+  paragraph.dispatchEvent(new f.w.MouseEvent('pointermove', { bubbles: true, clientX: 150, clientY: 110 })); await wait(340);
+  assert.equal(f.shadow.querySelector('.card').style.display, 'none'); assert.equal(f.requests.filter(m => m.type === 'LOOKUP').length, lookups);
+  paragraph.append(f.w.document.createTextNode(' Another apple.')); await wait(260);
+  assert.equal(f.w.document.querySelectorAll('[data-lexitrail-translation]').length, 0); assert(!f.highlights.get('lexitrail-new')?.size);
+  f.site.disabled = false; f.listener({ type: 'STATE_CHANGED' }); await wait(20);
+  assert.equal(paragraph.querySelectorAll('[data-lexitrail-translation]').length, 2);
+  assert.equal(f.highlights.get('lexitrail-new').size, 3); assert.equal(f.highlights.get('lexitrail-learning').size, 1);
+  selectWord(f, 'Quasar'); await wait(10); assert.equal(f.shadow.querySelector('.trigger').style.display, 'block');
+  f.dom.window.close();
+});
+test('a page on a disabled site does no marking on load and stays idle until re-enabled', async () => {
+  const f = await fixture({ siteDisabled: true }), paragraph = f.w.document.querySelector('#reading');
+  assert.equal(f.w.document.querySelectorAll('[data-lexitrail-translation]').length, 0);
+  assert.equal(f.highlights.size, 0);
+  paragraph.append(f.w.document.createTextNode(' Another apple.')); await wait(260);
+  assert.equal(f.highlights.size, 0); assert.equal(f.w.document.querySelectorAll('[data-lexitrail-translation]').length, 0);
+  selectWord(f, 'Quasar'); await wait(10); assert.equal(f.shadow.querySelector('.trigger').style.display, 'none');
+  f.site.disabled = false; f.listener({ type: 'STATE_CHANGED' }); await wait(20);
+  assert.equal(paragraph.querySelectorAll('[data-lexitrail-translation]').length, 2);
+  assert.equal(f.highlights.get('lexitrail-new').size, 3);
   f.dom.window.close();
 });

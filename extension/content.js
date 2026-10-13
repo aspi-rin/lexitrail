@@ -5,6 +5,9 @@
   let current = C.emptyState(), scanVersion = 0, refreshVersion = 0, lookupVersion = 0, timer;
   let selected = null, cardSelection = null, cardWord = '', lastResult = null, returnFocus = null;
   let hitTargets = new WeakMap(), hoverTimer, closeTimer, hoverWord = '', pinned = false;
+  // Per-site switch from the toolbar popup; until the first state arrives, nothing is marked.
+  const SITE = location.hostname;
+  let siteDisabled = false;
   const annotations = new Map();
   const ANNOTATION = 'data-lexitrail-translation';
   const host = document.createElement('div');
@@ -32,9 +35,15 @@
   function eligible(node) {
     return node.nodeType === Node.TEXT_NODE && node.parentElement && !node.parentElement.closest(EXCLUDED) && !host.contains(node);
   }
+  function clearMarks() {
+    scanVersion++; clearTimeout(timer); observer.disconnect();
+    for (const span of annotations.keys()) if (span.isConnected) span.replaceWith(...span.childNodes);
+    annotations.clear(); hitTargets = new WeakMap();
+    globalThis.CSS?.highlights?.delete('lexitrail-new'); globalThis.CSS?.highlights?.delete('lexitrail-learning');
+  }
   async function highlight() {
     const version = ++scanVersion;
-    if (!globalThis.CSS?.highlights || !globalThis.Highlight) return;
+    if (siteDisabled || !globalThis.CSS?.highlights || !globalThis.Highlight) return;
     // Generated CSS text adds a visible translation while keeping copied text
     // and selected English words intact. Only our own spans are reversible.
     observer.disconnect();
@@ -92,10 +101,13 @@
   async function refresh() {
     const version = ++refreshVersion;
     try {
-      const data = await send({ type: 'GET_STATE' });
+      const data = await send({ type: 'GET_STATE', site: SITE });
       if (version !== refreshVersion) return;
-      current = data.state;
-      scheduleHighlight();
+      const wasDisabled = siteDisabled;
+      current = data.state; siteDisabled = Boolean(data.siteDisabled);
+      if (siteDisabled) { hide(); clearMarks(); return; }
+      observe();
+      if (wasDisabled) highlight(); else scheduleHighlight();
       if (cardWord && card.style.display === 'block') renderCard(lastResult);
     } catch {}
   }
@@ -114,7 +126,7 @@
     return { word: term, context: paragraph.slice(Math.max(0, offset - 140), Math.max(0, offset - 140) + 300).trim(), rect, link, url: location.href, title: document.title };
   }
   function hit(event) {
-    if (!current.enabled || event.composedPath().includes(host)) return null;
+    if (siteDisabled || !current.enabled || event.composedPath().includes(host)) return null;
     const caret = document.caretPositionFromPoint?.(event.clientX, event.clientY);
     const legacy = caret ? null : document.caretRangeFromPoint?.(event.clientX, event.clientY);
     const node = caret?.offsetNode ?? legacy?.startContainer;
@@ -136,7 +148,7 @@
     if (!pinned && card.style.display === 'block') closeTimer = setTimeout(hide, 250);
   }
   function hover(event) {
-    if (event.pointerType === 'touch' || event.buttons || event.composedPath().includes(host)) { cancelHover(); return; }
+    if (siteDisabled || event.pointerType === 'touch' || event.buttons || event.composedPath().includes(host)) { cancelHover(); return; }
     if (pinned && card.style.display === 'block') return;
     const target = hit(event);
     if (!target) { cancelHover(); closeHover(); return; }
@@ -146,12 +158,12 @@
     cancelHover(); hoverWord = target.word;
     hoverTimer = setTimeout(() => {
       hoverWord = '';
-      if (current.enabled && ['new', 'learning'].includes(current.words[target.word]?.status)) openCard(target, false);
+      if (!siteDisabled && current.enabled && ['new', 'learning'].includes(current.words[target.word]?.status)) openCard(target, false);
     }, 300);
   }
   function selection() {
     const selection = window.getSelection();
-    if (!selection?.rangeCount || selection.isCollapsed) { trigger.style.display = 'none'; return; }
+    if (siteDisabled || !selection?.rangeCount || selection.isCollapsed) { trigger.style.display = 'none'; return; }
     const range = selection.getRangeAt(0);
     if (!eligible(range.startContainer) || !eligible(range.endContainer)) { trigger.style.display = 'none'; return; }
     const term = C.word(selection.toString());
@@ -269,9 +281,12 @@
   document.addEventListener('mousedown', event => { if (!event.composedPath().includes(host)) hide(); });
   window.addEventListener('scroll', hide, { passive: true });
   window.addEventListener('resize', hide);
-  chrome.runtime.onMessage.addListener(message => { if (message.type === 'STATE_CHANGED') refresh(); });
+  chrome.runtime.onMessage.addListener((message, sender, respond) => {
+    if (message.type === 'STATE_CHANGED') refresh();
+    // The popup asks the page for its hostname, so it needs no tabs/activeTab permission.
+    else if (message.type === 'GET_SITE') respond({ site: SITE });
+  });
   const observer = new MutationObserver(scheduleHighlight);
-  function observe() { observer.observe(document.body ?? document.documentElement, { childList: true, subtree: true, characterData: true }); }
-  observe();
+  function observe() { if (!siteDisabled) observer.observe(document.body ?? document.documentElement, { childList: true, subtree: true, characterData: true }); }
   refresh();
 })();
