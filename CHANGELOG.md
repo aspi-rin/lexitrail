@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.9 — 2026-10-15
+
+- Add a DeepSeek / Anthropic selector with independent local API keys. Anthropic uses Claude Haiku 5.5 with thinking disabled and a 512-token output limit.
+- Fix vocabulary scan starvation on continuously changing pages by coalescing pending scans instead of resetting the timer on every mutation.
+- Show the offline dictionary meaning immediately while waiting for AI; keep marking and pronunciation available on service errors.
+- Reject stale in-flight results inside serialized persistence when keys/providers change; preserve existing saved material, provider provenance, backups and WebDAV sync.
+- Normalize malformed service responses and provider access errors into short retryable messages. Update all syncing devices to 0.0.9+ before adding Anthropic material.
+
 ## 0.0.8 — 2026-10-13
 
 - Toolbar popup gains a per-site switch (“此网站”) at the top right of the intro, showing the current hostname. Turning it off removes dashed underlines, bracket translations, the hover card and the **L** selection button on that site immediately and stops selection/hover handling; turning it back on rescans the page — no reload in either direction.

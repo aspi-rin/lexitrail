@@ -2,7 +2,7 @@
   'use strict';
   const C = LexiTrail;
   const EXCLUDED = 'script,style,noscript,pre,code,textarea,input,select,button,svg,math,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[hidden],[aria-hidden="true"]';
-  let current = C.emptyState(), scanVersion = 0, refreshVersion = 0, lookupVersion = 0, timer;
+  let current = C.emptyState(), scanVersion = 0, refreshVersion = 0, lookupVersion = 0, timer, scanQueued = false;
   let selected = null, cardSelection = null, cardWord = '', lastResult = null, returnFocus = null;
   let hitTargets = new WeakMap(), hoverTimer, closeTimer, hoverWord = '', pinned = false;
   // Per-site switch from the toolbar popup; until the first state arrives, nothing is marked.
@@ -36,7 +36,7 @@
     return node.nodeType === Node.TEXT_NODE && node.parentElement && !node.parentElement.closest(EXCLUDED) && !host.contains(node);
   }
   function clearMarks() {
-    scanVersion++; clearTimeout(timer); observer.disconnect();
+    scanVersion++; clearTimeout(timer); timer = null; scanQueued = false; observer.disconnect();
     for (const span of annotations.keys()) if (span.isConnected) span.replaceWith(...span.childNodes);
     annotations.clear(); hitTargets = new WeakMap();
     globalThis.CSS?.highlights?.delete('lexitrail-new'); globalThis.CSS?.highlights?.delete('lexitrail-learning');
@@ -97,7 +97,16 @@
       CSS.highlights.set('lexitrail-new', fresh); CSS.highlights.set('lexitrail-learning', learning);
     }
   }
-  function scheduleHighlight() { clearTimeout(timer); timer = setTimeout(() => highlight(), 180); }
+  // Bound latency on live pages: frequent mutations share one scheduled pass.
+  function scheduleHighlight() {
+    scanQueued = true;
+    if (timer != null) return;
+    timer = setTimeout(async () => {
+      scanQueued = false;
+      try { await highlight(); }
+      finally { timer = null; if (scanQueued && !siteDisabled) scheduleHighlight(); }
+    }, 180);
+  }
   async function refresh() {
     const version = ++refreshVersion;
     try {
@@ -194,7 +203,8 @@
       if (result.audioNotice) body.append(element('p', result.audioNotice, 'notice'));
       shadow.querySelector('.phonetic').textContent = result.phonetic ?? '';
       shadow.querySelector('.level').textContent = result.level || record?.level || 'EN';
-    } else body.append(element('div', '正在查词…', 'loader'));
+    }
+    if (!result || result.loading) body.append(element('div', '正在生成释义与例句…', 'loader'));
     const actions = element('div', '', 'actions');
     for (const [status, label] of Object.entries(C.STATUSES)) {
       const button = element('button', status === 'learning' ? '☆ 加入学习中' : label);
@@ -231,7 +241,10 @@
     shadow.querySelector('.word').textContent = cardWord;
     shadow.querySelector('.phonetic').textContent = '';
     shadow.querySelector('.level').textContent = current.words[cardWord]?.level || 'EN';
-    card.style.display = 'block'; trigger.style.display = 'none'; position(card, target.rect, 350); renderCard(null);
+    card.style.display = 'block'; trigger.style.display = 'none'; position(card, target.rect, 350);
+    const record = current.words[cardWord];
+    lastResult = { meaning: record?.translation || record?.lookup?.meaning || '', ...record?.lookup, source: record?.lookup ? C.materialSource(record.lookup) : 'ECDICT / LexiTrail', loading: true };
+    renderCard(lastResult);
     if (focus) shadow.querySelector('.close').focus({ preventScroll: true });
     try {
       const result = await send({ type: 'LOOKUP', word: cardWord, context: cardSelection.context });
@@ -239,7 +252,7 @@
       lastResult = result; renderCard(result);
     } catch (error) {
       if (version !== lookupVersion) return;
-      lastResult = { error: true, notice: error.message }; renderCard(lastResult);
+      lastResult = { ...lastResult, loading: false, error: true, notice: error.message }; renderCard(lastResult);
     }
   }
   function systemSpeak() {

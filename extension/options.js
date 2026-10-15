@@ -2,6 +2,7 @@
   'use strict';
   const C = LexiTrail;
   let state = C.emptyState(), tab = 'new', page = 0, hasKey = false, keyDirty = false, syncBusy = false, webdavState = {}, webdavDirty = false;
+  let aiProvider = 'deepseek', refreshVersion = 0, providerBusy = false;
   const PAGE_SIZE = 40, $ = selector => document.querySelector(selector);
   function el(tag, text, className) { const node = document.createElement(tag); if (text != null) node.textContent = text; if (className) node.className = className; return node; }
   async function send(message) {
@@ -84,9 +85,13 @@
     renderTheme();
   });
   async function refresh() {
-    const data = await send({ type: 'GET_STATE' }); state = data.state;
-    hasKey = data.hasKey;
+    const version = ++refreshVersion;
+    const data = await send({ type: 'GET_STATE' });
     const settings = await send({ type: 'GET_SETTINGS' });
+    if (version !== refreshVersion) return;
+    state = data.state; hasKey = Boolean(settings.key);
+    aiProvider = C.provider(settings.provider); $('#ai-provider').value = aiProvider;
+    $('#api-key').placeholder = `输入 ${C.PROVIDERS[aiProvider].label} API Key`;
     if (!keyDirty) $('#api-key').value = settings.key || '';
     webdavState = settings.webdav || {};
     if (!webdavDirty) {
@@ -122,6 +127,21 @@
     button.title = configured ? '删除 Key' : '保存 Key';
     button.setAttribute('aria-label', configured ? '已配置，点击删除 Key' : '保存 Key');
   }
+  function providerFeedback(text, error = false) {
+    $('#provider-message').textContent = text; $('#provider-message').classList.toggle('error', error);
+  }
+  $('#ai-provider').addEventListener('change', async () => {
+    const selector = $('#ai-provider'), provider = selector.value;
+    providerBusy = true; selector.disabled = true; $('#save-key').disabled = true; $('#api-key').disabled = true;
+    providerFeedback('正在保存供应商…');
+    try {
+      await send({ type: 'SAVE_SETTINGS', provider });
+      keyDirty = false; $('#api-key').type = 'password';
+      await refresh();
+      providerFeedback(`${C.PROVIDERS[aiProvider].label} 已选用${hasKey ? '，Key 已配置。' : '，请保存对应 Key。'}`);
+    } catch (e) { selector.value = aiProvider; providerFeedback(e.message, true); }
+    finally { providerBusy = false; selector.disabled = false; $('#save-key').disabled = false; $('#api-key').disabled = false; }
+  });
   $('#api-key').addEventListener('input', () => { keyDirty = true; renderKey(); });
   $('#api-key').addEventListener('keydown', e => { if (e.key === 'Enter' && (keyDirty || !hasKey)) $('#save-key').click(); });
   $('#key-visibility').addEventListener('click', () => {
@@ -130,14 +150,15 @@
     $('#key-visibility').title = visible ? '隐藏 Key' : '显示 Key';
   });
   $('#save-key').addEventListener('click', async () => {
+    if (providerBusy) return;
     const button = $('#save-key'), clearKey = hasKey && !keyDirty;
-    if (!clearKey && !$('#api-key').value.trim()) { message('请填写 DeepSeek Key。', true); return; }
-    button.disabled = true;
+    if (!clearKey && !$('#api-key').value.trim()) { providerFeedback(`请填写 ${C.PROVIDERS[aiProvider].label} Key。`, true); return; }
+    button.disabled = true; $('#ai-provider').disabled = true;
     try {
-      await send({ type: 'SAVE_SETTINGS', enabled: state.enabled, key: clearKey ? '' : $('#api-key').value, clearKey });
+      await send({ type: 'SAVE_SETTINGS', provider: aiProvider, key: clearKey ? '' : $('#api-key').value, clearKey });
       keyDirty = false; $('#api-key').type = 'password'; $('#key-visibility').setAttribute('aria-label', '显示 Key');
-      await refresh(); message(clearKey ? 'Key 已删除。' : 'Key 已配置。');
-    } catch (e) { message(e.message, true); } finally { button.disabled = false; }
+      await refresh(); providerFeedback(clearKey ? 'Key 已删除。' : 'Key 已配置。');
+    } catch (e) { providerFeedback(e.message, true); } finally { button.disabled = false; $('#ai-provider').disabled = false; }
   });
   $('#enabled').addEventListener('change', async () => {
     try { await send({ type: 'SAVE_SETTINGS', enabled: $('#enabled').checked }); await refresh(); message('阅读标注设置已保存。'); }

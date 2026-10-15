@@ -168,3 +168,25 @@ test('a page on a disabled site does no marking on load and stays idle until re-
   assert.equal(f.highlights.get('lexitrail-new').size, 3);
   f.dom.window.close();
 });
+
+test('continuous page mutations still annotate newly inserted vocabulary promptly', async () => {
+  const f = await fixture();
+  const reading = f.w.document.querySelector('#reading');
+  const live = f.w.document.createElement('div'); f.w.document.body.append(live);
+  const added = f.w.document.createElement('p'); added.textContent = 'apple'; reading.append(added);
+  const interval = setInterval(() => { live.textContent = String(Date.now()); }, 35);
+  try {
+    await wait(650);
+    assert(added.querySelector('[data-lexitrail-translation]'), 'new vocabulary must appear while a live ticker keeps updating');
+  } finally { clearInterval(interval); f.dom.window.close(); }
+});
+
+test('offline dictionary meaning is visible while the AI service is still pending', async () => {
+  const f = await fixture();
+  try {
+    selectWord(f, 'Apple'); await wait(10); f.shadow.querySelector('.trigger').click(); await wait(10);
+    assert.equal(f.shadow.querySelector('.meaning')?.textContent, '苹果');
+    assert(f.shadow.querySelector('.loader'));
+    assert.equal(f.shadow.querySelector('[data-status="learning"]').disabled, false);
+  } finally { f.dom.window.close(); }
+});

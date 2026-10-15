@@ -1,5 +1,11 @@
 (function (root) {
   'use strict';
+  const PROVIDERS = {
+    deepseek: { label: 'DeepSeek Flash', model: 'deepseek-flash', keyName: 'deepseekKey' },
+    anthropic: { label: 'Anthropic · Claude Haiku 5.5', model: 'claude-haiku-5-5', keyName: 'anthropicKey' }
+  };
+  function provider(value) { return Object.hasOwn(PROVIDERS, value) ? value : 'deepseek'; }
+  function materialSource(value) { return Object.values(PROVIDERS).find(p => p.model === value?.model)?.label || 'AI 释义'; }
   const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
   const STATUSES = { new: '生词本', learning: '学习中', mastered: '已掌握' };
   function word(value) {
@@ -73,7 +79,12 @@
   function parseAI(response) {
     const choice = response?.choices?.[0];
     if (choice?.finish_reason !== 'stop') throw new Error('释义输出未完整结束，请重试。');
-    const data = JSON.parse(choice.message?.content ?? '');
+    return parseAIText(choice.message?.content);
+  }
+  function parseAIText(text) {
+    let data;
+    try { data = JSON.parse(text); } catch { throw new Error('释义结果格式异常，请重试。'); }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('释义结果格式异常，请重试。');
     return aiFields(data);
   }
   function aiFields(data) {
@@ -86,10 +97,10 @@
     return result;
   }
   function learningMaterial(value, term) {
-    if (!value || word(value.word) !== term || value.model !== 'deepseek-flash') return null;
+    if (!value || word(value.word) !== term || !Object.values(PROVIDERS).some(p => p.model === value.model)) return null;
     try {
       const fields = aiFields(value);
-      return { ...fields, schema: 1, model: 'deepseek-flash', promptVersion: 1,
+      return { ...fields, schema: 1, model: value.model, promptVersion: 1,
         queriedAt: Number.isFinite(value.queriedAt) && value.queriedAt > 0 ? value.queriedAt : Date.now(),
         context: short(value.context, 300) };
     } catch { return null; }
@@ -105,7 +116,7 @@
     const term = word(value);
     return term ? `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(term)}&type=2` : '';
   }
-  const api = { LEVELS, STATUSES, word, emptyState, seed, mark, enrich, counts, tokens, short, parseAI, learningMaterial, safeAudio, dictionaryAudio };
+  const api = { PROVIDERS, provider, materialSource, LEVELS, STATUSES, word, emptyState, seed, mark, enrich, counts, tokens, short, parseAI, parseAIText, learningMaterial, safeAudio, dictionaryAudio };
   root.LexiTrail = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(globalThis);

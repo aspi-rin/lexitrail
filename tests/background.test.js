@@ -202,7 +202,7 @@ test('startup quietly removes only obsolete Google Drive keys; wordbook, WebDAV 
   assert(!Object.hasOwn(w.stored, 'driveConfig')); assert(!Object.hasOwn(w.stored, 'syncProvider'));
   assert.deepEqual(w.calls.filter(call => call.remove).map(call => call.remove), [['driveConfig', 'syncProvider']]);
   assert.deepEqual(w.stored.state, state); assert.deepEqual(w.stored.webdavConfig, webdavConfig); assert.equal(w.stored.deepseekKey, 'fixture key');
-  assert.deepEqual(Object.keys(settings).sort(), ['key', 'webdav']); assert.equal(settings.webdav.url, webdavConfig.url);
+  assert.deepEqual(Object.keys(settings).sort(), ['key', 'provider', 'webdav']); assert.equal(settings.webdav.url, webdavConfig.url);
   for (const type of ['DRIVE_CONNECT', 'DRIVE_DISCONNECT', 'DRIVE_SYNC', 'SYNC_PROVIDER']) assert.equal((await w.send({ type, provider: 'google' })).error, '未知请求。');
   const fresh = worker(); assert((await fresh.send({ type: 'GET_STATE' })).ok); assert.deepEqual(Object.keys(fresh.stored), []);
 });
@@ -230,4 +230,65 @@ test('popup per-site switch persists hostnames locally, notifies tabs, and stays
   await restarted.send({ type: 'SET_SITE_ENABLED', site: 'www.example.com', enabled: true }, popup);
   assert.deepEqual(restarted.stored.disabledSites, ['docs.example.org']);
   assert.equal((await restarted.send({ type: 'GET_STATE', site: 'www.example.com' }, 'https://www.example.com/a')).data.siteDisabled, false);
+});
+
+test('provider selection keeps independent local credentials, routes lookups and preserves Anthropic material across restart and backups', async () => {
+  const w = worker({ deepseekKey: 'sk-' + 'd'.repeat(24) });
+  w.context.LexiTrailAPI.deepseek = async () => generated;
+  assert.equal((await w.send({ type: 'GET_SETTINGS' })).data.provider, 'deepseek');
+  const secret = 'sk-ant-' + 'a'.repeat(40);
+  assert((await w.send({ type: 'SAVE_SETTINGS', provider: 'anthropic', key: secret })).ok);
+  assert.equal(w.stored.deepseekKey, 'sk-' + 'd'.repeat(24));
+  let received;
+  w.context.LexiTrailAPI.anthropic = async (term, context, key) => { received = { term, context, key }; return generated; };
+  const card = (await w.send({ type: 'LOOKUP', word: 'quasar', context: 'A quasar shines.' })).data;
+  assert.equal(received.key, secret); assert.equal(card.model, 'claude-haiku-5-5'); assert.match(card.source, /Anthropic/);
+  const marked = await w.send({ type: 'MARK_WORD', word: 'quasar', status: 'learning', lookup: card });
+  assert.equal(marked.data.lookup.model, 'claude-haiku-5-5');
+  const publicData = await w.send({ type: 'GET_STATE' }, 'https://reading.example/');
+  assert(!JSON.stringify(publicData).includes(secret));
+  assert.equal((await w.send({ type: 'GET_SETTINGS' }, 'https://reading.example/')).ok, false);
+  const backup = (await w.send({ type: 'EXPORT_BACKUP' })).data;
+  assert(!JSON.stringify(backup).includes(secret)); assert(!JSON.stringify(backup).includes('aiProvider'));
+  const restarted = worker(w.stored);
+  restarted.context.LexiTrailAPI.anthropic = async () => { throw Error('must use saved material'); };
+  assert.equal((await restarted.send({ type: 'LOOKUP', word: 'quasar' })).data.model, 'claude-haiku-5-5');
+  assert((await restarted.send({ type: 'SAVE_SETTINGS', provider: 'deepseek' })).ok);
+  assert.equal((await restarted.send({ type: 'GET_SETTINGS' })).data.key, w.stored.deepseekKey);
+  assert((await restarted.send({ type: 'SAVE_SETTINGS', provider: 'anthropic', clearKey: true })).ok);
+  assert.equal(restarted.stored.anthropicKey, ''); assert.equal(restarted.stored.deepseekKey, w.stored.deepseekKey);
+  const imported = worker(); assert((await imported.send({ type: 'IMPORT_BACKUP', text: JSON.stringify(backup) })).ok);
+  assert.equal(imported.stored.state.words.quasar.lookup.model, 'claude-haiku-5-5');
+  assert.equal((await w.send({ type: 'SAVE_SETTINGS', provider: 'unknown' })).ok, false);
+});
+
+test('changing provider during a lookup rejects its stale result and starts the next lookup on the new provider', async () => {
+  const w = worker({ deepseekKey: 'fixture', anthropicKey: 'fixture' }); let finish, started;
+  const ready = new Promise(r => started = r);
+  w.context.LexiTrailAPI.deepseek = () => { started(); return new Promise(r => finish = r); };
+  const pending = w.send({ type: 'LOOKUP', word: 'quasar' }); await ready;
+  await w.send({ type: 'SAVE_SETTINGS', provider: 'anthropic' });
+  let calls = 0; w.context.LexiTrailAPI.anthropic = async () => { calls++; return generated; };
+  const result = await w.send({ type: 'LOOKUP', word: 'quasar' });
+  finish(generated);
+  assert.match((await pending).data.notice, /配置已更新/);
+  assert.equal(result.data.model, 'claude-haiku-5-5'); assert.equal(calls, 1);
+  assert.equal((await w.send({ type: 'LOOKUP', word: 'quasar' })).data.model, 'claude-haiku-5-5');
+  assert.equal(calls, 1);
+});
+
+test('a lookup completing during provider save cannot persist the old provider result', async () => {
+  const w = worker({ deepseekKey: 'fixture', anthropicKey: 'fixture' });
+  await w.send({ type: 'MARK_WORD', word: 'quasar', status: 'learning' });
+  let finish, started, saving, release;
+  const lookupReady = new Promise(r => started = r), saveReady = new Promise(r => saving = r);
+  const saveGate = new Promise(r => release = r);
+  w.context.LexiTrailAPI.deepseek = () => { started(); return new Promise(r => finish = r); };
+  const pending = w.send({ type: 'LOOKUP', word: 'quasar' }); await lookupReady;
+  const originalSet = w.context.chrome.storage.local.set;
+  w.context.chrome.storage.local.set = async values => { if (values.aiProvider) { saving(); await saveGate; } await originalSet(values); };
+  const save = w.send({ type: 'SAVE_SETTINGS', provider: 'anthropic' }); await saveReady;
+  finish(generated); await new Promise(r => setTimeout(r, 5)); release(); await save;
+  assert.match((await pending).data.notice, /配置已更新/);
+  assert.equal(w.stored.state.words.quasar.lookup, null);
 });

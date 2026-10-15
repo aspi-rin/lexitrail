@@ -12,6 +12,7 @@ backend.context.LexiTrailAPI.deepseek = async (term) => {
   if (term === 'quasar') return { meaning: '类星体', definition: 'A very bright, distant galactic nucleus.', partOfSpeech: 'noun', example: 'A quasar shines far beyond our galaxy.', exampleTranslation: '一颗类星体在我们银河系之外的远处闪耀。' };
   return { meaning: translations[term] || '测试释义', definition: 'Able to recover quickly after difficulty.', partOfSpeech: 'adjective', example: 'The resilient forest grows again after the storm.', exampleTranslation: '这片有韧性的森林在风暴后重新生长。' };
 };
+backend.context.LexiTrailAPI.anthropic = backend.context.LexiTrailAPI.deepseek;
 // Simulated WebDAV implements only the dedicated app folder and device files.
 const davFiles = new Map(); let davFolder = false;
 const davRequest = async (url, options) => {

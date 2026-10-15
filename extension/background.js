@@ -66,13 +66,13 @@ function view(term, dict, translations, result, notice = '') {
   return {
     word: term, level: Object.hasOwn(dict, term) ? dict[term] : '',
     meaning: Object.hasOwn(translations, term) ? translations[term] : '', ...result,
-    audio: C.dictionaryAudio(term), source: result ? 'DeepSeek Flash' : 'ECDICT / LexiTrail', notice
+    audio: C.dictionaryAudio(term), source: result ? C.materialSource(result) : 'ECDICT / LexiTrail', notice
   };
 }
-async function retain(term, result) {
+async function retain(term, result, generation = cacheGeneration) {
   return serialized(async () => {
     const current = await state(), record = Object.hasOwn(current.words, term) ? current.words[term] : null;
-    if (!record?.studySaved || record.lookup) return;
+    if (generation !== cacheGeneration || !record?.studySaved || record.lookup) return;
     record.lookup = result;
     record.translation ||= result.meaning;
     record.updated = Date.now();
@@ -90,14 +90,16 @@ async function handle(message, sender) {
       await writes;
       const current = await state(), site = siteName(message.site);
       const siteDisabled = Boolean(site) && (await disabledSites()).includes(site);
-      return { state: current, hasKey: Boolean((await chrome.storage.local.get('deepseekKey')).deepseekKey), counts: C.counts(current), siteDisabled };
+      const provider = C.provider((await chrome.storage.local.get('aiProvider')).aiProvider);
+      return { state: current, hasKey: Boolean((await chrome.storage.local.get(C.PROVIDERS[provider].keyName))[C.PROVIDERS[provider].keyName]), counts: C.counts(current), siteDisabled };
     }
     case 'GET_LEVELS': {
       return C.LEVELS.map(level => ({ level, count: Object.values(dict).filter(v => v === level).length }));
     }
     case 'GET_SETTINGS': {
       if (!trusted(sender)) throw new Error('请在设置页查看配置。');
-      return { key: (await chrome.storage.local.get('deepseekKey')).deepseekKey ?? '', webdav: await webdav.status() };
+      const provider = C.provider((await chrome.storage.local.get('aiProvider')).aiProvider);
+      return { provider, key: (await chrome.storage.local.get(C.PROVIDERS[provider].keyName))[C.PROVIDERS[provider].keyName] ?? '', webdav: await webdav.status() };
     }
     case 'WEBDAV_CONNECT': {
       if (!trusted(sender)) throw Error('请在设置页保存 WebDAV 连接。');
@@ -167,17 +169,21 @@ async function handle(message, sender) {
       if (!trusted(sender)) throw new Error('请在设置页保存配置。');
       return serialized(async () => {
         const current = await state();
-        if (current.enabled !== Boolean(message.enabled)) {
+        if (typeof message.enabled === 'boolean' && current.enabled !== message.enabled) {
           current.enabled = Boolean(message.enabled); current.enabledUpdated = Date.now(); current.revision = (current.revision ?? 0) + 1;
         }
         const update = { state: current };
-        if (message.clearKey) update.deepseekKey = '';
+        if (message.provider != null && !Object.hasOwn(C.PROVIDERS, message.provider)) throw Error('请选择支持的 AI 供应商。');
+        const provider = message.provider ?? C.provider((await chrome.storage.local.get('aiProvider')).aiProvider);
+        const config = C.PROVIDERS[provider];
+        if (message.provider != null) update.aiProvider = provider;
+        if (message.clearKey) update[config.keyName] = '';
         else if (message.key) {
-          if (typeof message.key !== 'string' || !/^sk-[a-zA-Z0-9_-]{16,200}$/.test(message.key.trim())) throw new Error('请填写有效的 DeepSeek Key。');
-          update.deepseekKey = message.key.trim();
+          if (typeof message.key !== 'string' || !/^sk-[a-zA-Z0-9_-]{16,240}$/.test(message.key.trim())) throw new Error(`请填写有效的 ${config.label} Key。`);
+          update[config.keyName] = message.key.trim();
         }
         await chrome.storage.local.set(update);
-        if (Object.hasOwn(update, 'deepseekKey')) { cacheGeneration++; lookups.clear(); pendingLookups.clear(); }
+        if (Object.hasOwn(update, 'aiProvider') || Object.hasOwn(update, config.keyName)) { cacheGeneration++; lookups.clear(); pendingLookups.clear(); }
         await notify();
         return { saved: true };
       });
@@ -207,16 +213,19 @@ async function handle(message, sender) {
       if (pendingLookups.has(term)) return pendingLookups.get(term);
       const generation = cacheGeneration;
       const promise = (async () => {
-        const key = (await chrome.storage.local.get('deepseekKey')).deepseekKey ?? '';
-        if (!key) return view(term, dict, translations, null, '在设置中添加 DeepSeek Key，可生成简短中文释义和例句。');
+        const provider = C.provider((await chrome.storage.local.get('aiProvider')).aiProvider), config = C.PROVIDERS[provider];
+        const key = (await chrome.storage.local.get(config.keyName))[config.keyName] ?? '';
+        if (!key) return view(term, dict, translations, null, `在设置中添加 ${config.label} Key，可生成简短中文释义和例句。`);
         let result;
         try {
           const context = C.short(message.context, 300);
-          const generated = await LexiTrailAPI.deepseek(term, context, key);
-          result = { ...generated, schema: 1, model: 'deepseek-flash', promptVersion: 1, queriedAt: Date.now(), context };
+          const generated = await LexiTrailAPI[provider](term, context, key);
+          result = { ...generated, schema: 1, model: config.model, promptVersion: 1, queriedAt: Date.now(), context };
         } catch (error) { return view(term, dict, translations, null, error.message); }
         // A key change cancels admission of old requests to both stores.
-        if (generation === cacheGeneration) { remember(term, result); await retain(term, result); }
+        if (generation !== cacheGeneration) return view(term, dict, translations, null, 'AI 配置已更新，请重新查词。');
+        remember(term, result); await retain(term, result, generation);
+        if (generation !== cacheGeneration) return view(term, dict, translations, null, 'AI 配置已更新，请重新查词。');
         return view(term, dict, translations, result);
       })();
       pendingLookups.set(term, promise);

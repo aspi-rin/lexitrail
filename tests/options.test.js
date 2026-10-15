@@ -166,3 +166,27 @@ test('WebDAV rejected credentials persist through page reload and sync remains a
   assert.match(w.document.querySelector('#sync-status').textContent,/已保存并验证/);assert.equal(calls.filter(t=>t==='WEBDAV_SYNC').length,2);
   dom.window.close();
 });
+
+test('switching providers restores its own masked key and saves or deletes only that provider', async () => {
+  const { worker } = require('./worker-fixture');
+  const backend = worker({ deepseekKey: 'sk-' + 'd'.repeat(24), anthropicKey: 'sk-ant-' + 'a'.repeat(40) });
+  const dom = new JSDOM(fs.readFileSync(path.join(root, 'options.html'), 'utf8'), { url: 'https://example.org/options.html', runScripts: 'outside-only' });
+  const w = dom.window;
+  w.chrome = { runtime: { sendMessage: backend.send }, storage: { onChanged: { addListener: () => {} } } };
+  w.eval(fs.readFileSync(path.join(root, 'core.js'), 'utf8')); w.eval(fs.readFileSync(path.join(root, 'options.js'), 'utf8'));
+  const settle = async () => { for (let i = 0; i < 50 && w.document.querySelector('#save-key').disabled; i++) await new Promise(r => setTimeout(r, 5)); };
+  try {
+    await new Promise(r => setTimeout(r, 30));
+    const selector = w.document.querySelector('#ai-provider'), key = w.document.querySelector('#api-key'), save = w.document.querySelector('#save-key');
+    assert.equal(selector.value, 'deepseek'); assert.equal(key.value, backend.stored.deepseekKey);
+    selector.value = 'anthropic'; selector.dispatchEvent(new w.Event('change')); await settle();
+    assert.equal(backend.stored.aiProvider, 'anthropic'); assert.equal(key.value, backend.stored.anthropicKey); assert.equal(key.type, 'password');
+    assert.equal(w.document.querySelector('#key-action-label').textContent, '已配置');
+    save.click(); await settle(); assert.equal(backend.stored.anthropicKey, '');
+    assert(backend.stored.deepseekKey);
+    key.value = 'sk-ant-' + 'b'.repeat(40); key.dispatchEvent(new w.Event('input')); save.click(); await settle();
+    assert.equal(backend.stored.anthropicKey, key.value); assert.equal(key.type, 'password');
+    selector.value = 'deepseek'; selector.dispatchEvent(new w.Event('change')); await settle();
+    assert.equal(key.value, backend.stored.deepseekKey);
+  } finally { dom.window.close(); }
+});

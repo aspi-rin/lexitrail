@@ -13,9 +13,9 @@ crypto.createPublicKey({ key: publicKey, format: 'der', type: 'spki' });
 // Chrome derives the extension ID from the public key; a changed key would orphan the stored wordbook.
 const extensionId = [...crypto.createHash('sha256').update(publicKey).digest('hex').slice(0, 32)].map(c => String.fromCharCode(97 + parseInt(c, 16))).join('');
 if (extensionId !== 'pabcjgpefkpmodichjomkgiflicagkec') throw Error(`Unexpected extension ID ${extensionId}`);
-// Keep the requested access explicit: storage plus the DeepSeek and Youdao endpoints, WebDAV origins on demand.
+// Keep the requested access explicit: storage plus the DeepSeek, Anthropic and Youdao endpoints, WebDAV origins on demand.
 if (manifest.oauth2 || JSON.stringify(manifest.permissions) !== '["storage","unlimitedStorage"]'
-  || JSON.stringify(manifest.host_permissions) !== '["https://api.deepseek.com/*","https://dict.youdao.com/*"]'
+  || JSON.stringify(manifest.host_permissions) !== '["https://api.deepseek.com/*","https://api.anthropic.com/*","https://dict.youdao.com/*"]'
   || JSON.stringify(manifest.optional_host_permissions) !== '["https://*/*"]') throw Error('Unexpected manifest permissions');
 const files = [manifest.background.service_worker, manifest.action.default_popup, manifest.options_page, ...manifest.content_scripts.flatMap(s => [...s.js, ...s.css]), 'data/cefr.json', 'data/translations.json', 'data/ECDICT-LICENSE.txt'];
 for (const name of files) if (!fs.existsSync(path.join(folder, name))) throw Error(`Missing ${name}`);
@@ -27,5 +27,5 @@ function scan(dir) {
   }
 }
 scan(folder);
-console.log(`Fixed extension ID ${extensionId}; permissions limited to storage, DeepSeek, Youdao and user-approved WebDAV origins.`);
+console.log(`Fixed extension ID ${extensionId}; permissions limited to storage, DeepSeek, Anthropic, Youdao and user-approved WebDAV origins.`);
 console.log('Syntax, manifest paths, versions and extension credential scan passed.');

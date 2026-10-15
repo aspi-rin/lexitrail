@@ -1,3 +1,34 @@
+# LexiTrail 0.0.9 验证记录
+
+日期：2026-10-15。实现分支 fix/provider-stability，基础提交 5e203a8（0.0.8）。
+
+## 复现与修复
+
+1. `node --test --test-name-pattern='continuous page|offline dictionary' tests/content.test.js` 在修改前产生两处确定性失败：页面每 35ms 更新时，650ms 后新增生词仍无标注；AI 尚未返回时，卡片缺少已有的“苹果”释义。修复后两项通过。扫描采用合并请求，并在一次扫描完成后处理期间积累的更新；卡片先显示已有材料和可用操作，再补充 AI 结果。
+2. 保存供应商时用存储写入屏障，让旧请求在新配置落盘期间返回。`node --test --test-name-pattern='completing during provider' tests/background.test.js` 修改前失败；在串行持久化内部加入配置代数校验后通过，旧材料保持未写入，卡片提示重新查词。
+3. 服务返回损坏 JSON 时，原代码直接显示底层解析错误；新增测试先失败，修复后以简短重试提示代替。完整结束标记、必要字段和显示长度校验继续保留。
+
+## 新供应商与回归
+
+- 66 项 Node 测试通过，语法、版本、固定扩展 ID、明确权限清单、源码凭据扫描及 diff 检查通过。包含独立 Key 保存/删除/切回、可信设置页限制、公开状态/备份排除凭据、新模型材料重启和备份恢复、配置切换与请求并发、两供应商超时处理，以及原有词本/网站开关/WebDAV 回归。
+- Anthropic 通过官方 Messages API，模型 `claude-haiku-5-5`，关闭思考、low effort、最多 512 输出 token；DeepSeek 保留 `deepseek-flash` / 320 token。上下文均最多 300 字符；按完整结束状态和严格 JSON 对象读取，错误响应体保持隔离。
+- 仅新增 `https://api.anthropic.com/*` 主机访问；固定扩展 ID `pabcjgpefkpmodichjomkgiflicagkec`、原词本和 WebDAV 凭据保持。API Key 与供应商选择仅在本机保存；已有学习材料按原供应商标识复用。
+- 无认证探测：DeepSeek 359ms 返回 401，Anthropic 323ms 返回 401。仅证实本机网络可抵达认证入口，真实 Key、模型权限、付费生成和扩展环境尚待实际验证。本轮未读取用户浏览器的 Key，未发起付费查询。
+- 当前运行环境未连接浏览器（CUA 返回可用浏览器列表为空），设置页使用 JSDOM 与真实后台测试夹具验证。没有宣称真实 Chrome 扩展、真实网站或两台真实设备验证通过。
+
+## 升级验收
+
+覆盖原固定安装目录，重新加载同一扩展；按 Chrome 提示确认 Anthropic 主机访问，刷新已打开的阅读页。核对原词本数量；设置页选择 Anthropic、填写自己的 API Key，查一个尚未保存 AI 材料的词，再加入学习中、刷新设置页检查释义和例句。已保存的词继续复用首次材料。所有参与 WebDAV 的设备统一升级到 0.0.9+，随后按 A→B→A 进行同步检查。
+
+## 官方依据（本轮核对）
+
+- [DeepSeek 模型入口](https://api-docs.deepseek.com/guides/codex)：当前仍支持 deepseek-flash。
+- [DeepSeek 状态页](https://status.deepseek.com/)：检查时显示服务正常；它代表供应商公布的整体状态。
+- [Claude Haiku 5.5](https://platform.claude.com/docs/en/models/haiku-5-5/overview) 与 [Thinking](https://platform.claude.com/docs/en/build-with-claude/thinking)：当前模型及关闭思考的参数支持。
+- [Messages API](https://platform.claude.com/docs/en/api/messages/create)：官方鉴权、消息结构与结束状态。
+
+---
+
 # LexiTrail 0.0.8 验证记录
 
 日期：2026-10-13。分支 feat/site-disable-toggle，基础提交 476d6ac（0.0.7）。
