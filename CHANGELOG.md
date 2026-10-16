@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.10 — 2026-10-16
+
+- Dispatch page notifications independently from persisted wordbook writes. A busy or unresponsive reading tab can no longer block marking, settings saves, imports, or subsequent state reads.
+- Show pending counts while the wordbook loads, instead of an initial empty-book count.
+- Add worker/wordbook integration regressions for stalled tab delivery/discovery and notification failure.
+
 ## 0.0.9 — 2026-10-15
 
 - Add a DeepSeek / Anthropic selector with independent local API keys. Anthropic uses Claude Haiku 5.5 with thinking disabled and a 512-token output limit.

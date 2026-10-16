@@ -1,6 +1,6 @@
 # LexiTrail
 
-英文阅读词汇插件，Chrome / Edge Manifest V3，版本 0.0.9。
+英文阅读词汇插件，Chrome / Edge Manifest V3，版本 0.0.10。
 
 ## 安装和使用
 
@@ -58,6 +58,6 @@ npm test
 npm run build
 ```
 
-构建输出位于 `dist/lexitrail/` 和 `dist/lexitrail-0.0.9.zip`；`node scripts/build.js --migration` 生成旧身份备份迁移包。数据来源、固定版本与许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+构建输出位于 `dist/lexitrail/` 和 `dist/lexitrail-0.0.10.zip`；`node scripts/build.js --migration` 生成旧身份备份迁移包。数据来源、固定版本与许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-0.0.9 实现分支 `fix/provider-stability` 使用个人 Git 身份。老板已授权这个个人项目直接提交并推送，实质风险另行审核。首次正式 Git 提交版本为 0.0.3；0.1 由老板宣布首个可用小版本时启用。
+0.0.10 修复分支 `fix/freeze-oct16` 使用个人 Git 身份。老板已授权这个个人项目直接提交并推送，实质风险另行审核。首次正式 Git 提交版本为 0.0.3；0.1 由老板宣布首个可用小版本时启用。

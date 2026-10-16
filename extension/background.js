@@ -49,9 +49,12 @@ async function disabledSites() {
 function trusted(sender) {
   return sender.id === chrome.runtime.id && sender.url === chrome.runtime.getURL('options.html');
 }
-async function notify() {
-  const tabs = await chrome.tabs.query({});
-  await Promise.all(tabs.map(t => chrome.tabs.sendMessage(t.id, { type: 'STATE_CHANGED' }).catch(() => {})));
+function notify() {
+  // A busy/frozen tab may never answer. Notifications must never hold the
+  // persisted-write queue, which GET_STATE and the wordbook also wait on.
+  chrome.tabs.query({}).then(tabs => {
+    for (const tab of tabs) chrome.tabs.sendMessage(tab.id, { type: 'STATE_CHANGED' }).catch(() => {});
+  }).catch(() => {});
 }
 function cached(term) {
   const result = lookups.get(term);
